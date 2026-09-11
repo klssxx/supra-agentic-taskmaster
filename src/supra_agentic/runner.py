@@ -124,9 +124,60 @@ class TaskmasterRunner:
                 allow_disruptive=allow_disruptive,
             )
 
+            # INTEGRACIÓN CRIBA ↔ SUPRA: Enriquecer candidatos con CRIBA
+            logger.info(f"[{pid}] Executing CRIBA Bridge: generating ideas via CRIBA")
+            try:
+                from .integrations.criba_bridge import call_criba
+                criba_result = call_criba(
+                    query=clean_obj,
+                    mode="balanced",
+                    supporting_methods=6,
+                )
+                criba_ideas = criba_result.get("ideas") or criba_result.get("innovation", {}).get("ideas") or []
+                logger.info(f"[{pid}] CRIBA generated {len(criba_ideas)} ideas")
+                
+                # Convertir ideas CRIBA a StrategyCandidates de SUPRA
+                from .models import StrategyCandidate
+                criba_candidates = []
+                for i, idea in enumerate(criba_ideas[:5]):  # Top 5 ideas de CRIBA
+                    conv = idea.get("convergence", {})
+                    candidate = StrategyCandidate(
+                        pathway_name=f"CRIBA: {idea.get('title', f'Idea {i+1}')[:60]}",
+                        paradigm_type="ORTHOGONAL" if conv.get("divergence_real") else "CONSERVATIVE",
+                        hypothesis=idea.get("description", "")[:200],
+                        action_plan=[
+                            f"Mechanism: {idea.get('mechanism_causal', '')[:100]}",
+                            f"Expected effect: {idea.get('expected_effect', '')[:100]}",
+                        ],
+                        divergence_score=min(0.95, conv.get("novelty", 0.5) + 0.3),
+                        feasibility_score=conv.get("evidence", 0.5),
+                        is_selected=False,
+                    )
+                    criba_candidates.append(candidate)
+                
+                if criba_candidates:
+                    # Añadir candidatos de CRIBA a SUPRA
+                    posture = state_manager.get_project(pid)
+                    if posture:
+                        all_candidates = list(posture.candidates) + criba_candidates
+                        state_manager.add_candidates(pid, all_candidates, select_best=True)
+                        logger.info(f"[{pid}] Added {len(criba_candidates)} CRIBA candidates to SUPRA")
+            except Exception as e:
+                logger.warning(f"[{pid}] CRIBA bridge failed (non-critical): {e}")
+
             # Stage 4: Verify Invariants & Sandbox with Self-Correction
             logger.info(f"[{pid}] Executing Tool 3: verify_solution")
             verify_solution(project_id=pid)
+
+            # FASE 3: Verificación causal (SUPRA razona causalmente)
+            logger.info(f"[{pid}] Executing Causal Verification")
+            from .causal import CausalGraph, CausalVerifier
+            posture = state_manager.get_project(pid)
+            if posture and posture.decomposition and posture.selected_candidate:
+                graph = CausalGraph.from_decomposition(posture.decomposition)
+                verifier = CausalVerifier(graph)
+                causal_result = verifier.check_candidate(posture.selected_candidate)
+                logger.info(f"[{pid}] Causal confidence: {causal_result['causal_confidence']}")
 
             # Stage 4b: Sandbox Execution (SANDBOX_VERIFIED)
             logger.info(f"[{pid}] Executing Tool 4: execute_sandbox_action")

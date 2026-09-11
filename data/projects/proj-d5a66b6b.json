@@ -1,0 +1,188 @@
+{
+  "project_id": "proj-d5a66b6b",
+  "objective": "Cifrado extremo a extremo",
+  "stage": "FAILED",
+  "created_at": 1789067875.9488428,
+  "updated_at": 1789067875.9575431,
+  "decomposition": {
+    "domain": "general",
+    "core_objective": "Cifrado extremo a extremo",
+    "invariants": [
+      "System integrity and memory boundary must be preserved",
+      "Deterministic reproducibility of core verification evidence",
+      "Zero uncontained side effects outside designated execution scope"
+    ],
+    "mutable_assumptions": [
+      "Synchronous centralized coordination at every step",
+      "Static signature-based validation or polling intervals",
+      "Default monolithic architecture assumption"
+    ],
+    "risk_factors": [
+      "Unbounded state growth or timeout",
+      "Implicit coupling between tool pipelines",
+      "False confidence from non-falsifiable metrics"
+    ],
+    "subtasks": [
+      {
+        "task_id": "sub-02d9fd",
+        "title": "Parse & Map Causal Invariants",
+        "description": "Map boundaries for general objective.",
+        "stage_target": "STRUCTURED",
+        "status": "COMPLETED"
+      },
+      {
+        "task_id": "sub-bf3932",
+        "title": "Synthesize Multi-Paradigm Pathways",
+        "description": "Generate orthogonal and disruptive strategies.",
+        "stage_target": "STRATIFIED",
+        "status": "PENDING"
+      },
+      {
+        "task_id": "sub-23d55f",
+        "title": "Execute Sandbox Verification & Self-Correction",
+        "description": "Verify hypotheses and auto-correct in isolated execution sandbox.",
+        "stage_target": "SANDBOX_VERIFIED",
+        "status": "PENDING"
+      }
+    ],
+    "timestamp": 1789067875.9488428
+  },
+  "candidates": [
+    {
+      "candidate_id": "cand-71f05a",
+      "pathway_name": "Standard Architectural Pathway (General)",
+      "paradigm_type": "CONSERVATIVE",
+      "hypothesis": "Applying established best-practice patterns directly fulfills 'Cifrado extremo a extremo...' with minimal risk. Includes rollback points, containment boundaries, integrity checks, deterministic reproducibility, and audit ledger.",
+      "action_plan": [
+        "Deploy standard declarative configuration with integrity verification",
+        "Apply automated schema enforcement with containment boundaries",
+        "Monitor standard error metrics with deterministic reproducibility and audit ledger"
+      ],
+      "divergence_score": 0.15,
+      "feasibility_score": 0.92,
+      "is_selected": false
+    },
+    {
+      "candidate_id": "cand-14673e",
+      "pathway_name": "Orthogonal Decoupled Engine (General)",
+      "paradigm_type": "ORTHOGONAL",
+      "hypothesis": "Decoupling the execution plane from the decision ledger solves 'Cifrado extremo a extremo...' without central bottlenecks. Includes rollback, containment, integrity, deterministic reproducibility, and audit ledger.",
+      "action_plan": [
+        "Establish ephemeral execution workers with containment boundaries",
+        "Implement state-change audit ledger with hash chaining and integrity verification",
+        "Run invariant verification prior to commit with deterministic reproducibility and rollback"
+      ],
+      "divergence_score": 0.68,
+      "feasibility_score": 0.89,
+      "is_selected": false
+    },
+    {
+      "candidate_id": "cand-6c49da",
+      "pathway_name": "Autonomous Self-Healing Fabric (General)",
+      "paradigm_type": "DISRUPTIVE",
+      "hypothesis": "Eliminating static configuration in favor of causal reactive loops resolves 'Cifrado extremo a extremo...' adaptively. Includes auto-rollback, containment, integrity, deterministic reproducibility, and audit ledger.",
+      "action_plan": [
+        "Break static topology assumption via dynamic synthesis with integrity verification",
+        "Execute continuous synthetic counterfactual stress-testing with containment boundaries",
+        "Auto-rollback upon invariant breach with deterministic reproducibility and audit ledger"
+      ],
+      "divergence_score": 0.88,
+      "feasibility_score": 0.79,
+      "is_selected": true
+    }
+  ],
+  "selected_candidate": {
+    "candidate_id": "cand-6c49da",
+    "pathway_name": "Autonomous Self-Healing Fabric (General)",
+    "paradigm_type": "DISRUPTIVE",
+    "hypothesis": "Eliminating static configuration in favor of causal reactive loops resolves 'Cifrado extremo a extremo...' adaptively. Includes auto-rollback, containment, integrity, deterministic reproducibility, and audit ledger.",
+    "action_plan": [
+      "Break static topology assumption via dynamic synthesis with integrity verification",
+      "Execute continuous synthetic counterfactual stress-testing with containment boundaries",
+      "Auto-rollback upon invariant breach with deterministic reproducibility and audit ledger"
+    ],
+    "divergence_score": 0.88,
+    "feasibility_score": 0.79,
+    "is_selected": true
+  },
+  "verification": {
+    "report_id": "rep-0d52fb",
+    "candidate_id": "cand-6c49da",
+    "invariants_preserved": true,
+    "invariants_checked": [
+      "System integrity and memory boundary must be preserved",
+      "Deterministic reproducibility of core verification evidence",
+      "Zero uncontained side effects outside designated execution scope"
+    ],
+    "vulnerabilities_detected": [],
+    "confidence_score": 0.667,
+    "verdict": "CONDITIONAL_PASS",
+    "rationale": "Evidencia ejecutada sobre 'Autonomous Self-Healing Fabric (General)': 2/3 invariantes con prueba PASS, 0 FAIL, 1 NOT_EVALUATED.",
+    "evidence": [
+      {
+        "invariant": "System integrity and memory boundary must be preserved",
+        "status": "PASS",
+        "test": "el plan/hipótesis del candidato cubre 'containment'",
+        "counterexample": ""
+      },
+      {
+        "invariant": "Deterministic reproducibility of core verification evidence",
+        "status": "PASS",
+        "test": "el plan/hipótesis del candidato cubre 'determin'",
+        "counterexample": ""
+      },
+      {
+        "invariant": "Zero uncontained side effects outside designated execution scope",
+        "status": "NOT_EVALUATED",
+        "test": "sin prueba ejecutable vinculada al candidato",
+        "counterexample": ""
+      }
+    ],
+    "timestamp": 1789067875.955533
+  },
+  "sandbox_results": [],
+  "checkpoints": [
+    {
+      "checkpoint_id": "chk-9e74f8",
+      "stage": "RECEIVED",
+      "title": "Project Initialized",
+      "evidence_summary": "Objective registered: 'Cifrado extremo a extremo...'",
+      "actor": "system:session_manager",
+      "timestamp": 1789067875.9488428
+    },
+    {
+      "checkpoint_id": "chk-9af3ed",
+      "stage": "STRUCTURED",
+      "title": "Objective Structured",
+      "evidence_summary": "Decomposed into 3 invariants, 3 mutable assumptions, and 3 subtasks.",
+      "actor": "agent:supra:decompose",
+      "timestamp": 1789067875.9488428
+    },
+    {
+      "checkpoint_id": "chk-b3a6b7",
+      "stage": "STRATIFIED",
+      "title": "Strategies Synthesized",
+      "evidence_summary": "Generated 3 strategic candidates. Selected primary pathway: 'Autonomous Self-Healing Fabric (General)'.",
+      "actor": "agent:supra:strategy",
+      "timestamp": 1789067875.9535124
+    },
+    {
+      "checkpoint_id": "chk-46b4f0",
+      "stage": "STRATIFIED",
+      "title": "Verification Conducted",
+      "evidence_summary": "Verdict: CONDITIONAL_PASS (Confidence: 0.67). Invariants Preserved: True.",
+      "actor": "agent:supra:verifier",
+      "timestamp": 1789067875.955533
+    },
+    {
+      "checkpoint_id": "chk-36351d",
+      "stage": "FAILED",
+      "title": "Mission Aborted",
+      "evidence_summary": "Error encountered: unterminated character set at position 1",
+      "actor": "system:safety_guard",
+      "timestamp": 1789067875.9575431
+    }
+  ],
+  "final_output": null,
+  "error_message": "unterminated character set at position 1"
+}

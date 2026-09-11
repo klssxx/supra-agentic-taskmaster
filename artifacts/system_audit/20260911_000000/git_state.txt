@@ -1,0 +1,48 @@
+=== GIT STATUS ===
+ M .github/workflows/ci.yml
+ M Dockerfile
+ M README.md
+ M pyproject.toml
+ M scripts/launch_supra.bat
+ M src/supra_agentic/providers/__init__.py
+ M src/supra_agentic/runner.py
+ M src/supra_agentic/service.py
+ M src/supra_agentic/state.py
+ M src/supra_agentic/tools.py
+ M src/supra_agentic/web/app.js
+?? .github/workflows/release.yml
+?? .pre-commit-config.yaml
+?? CHANGELOG.md
+?? artifacts/
+?? data/
+?? src/supra_agentic/causal.py
+?? src/supra_agentic/integrations/
+?? src/supra_agentic/providers/nebius.py
+?? tests/providers/
+?? uv.lock
+=== BRANCH ===
+* main
+=== HEAD ===
+50c86d20b879679d7f8d985811a1ae0ee530169c
+=== REMOTE ===
+origin	https://github.com/klssxx/supra-agentic-taskmaster.git (fetch)
+origin	https://github.com/klssxx/supra-agentic-taskmaster.git (push)
+=== UNCOMMITTED FILES ===
+warning: in the working copy of '.github/workflows/ci.yml', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'Dockerfile', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'pyproject.toml', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/launch_supra.bat', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/supra_agentic/service.py', LF will be replaced by CRLF the next time Git touches it
+.github/workflows/ci.yml
+Dockerfile
+README.md
+pyproject.toml
+scripts/launch_supra.bat
+src/supra_agentic/providers/__init__.py
+src/supra_agentic/runner.py
+src/supra_agentic/service.py
+src/supra_agentic/state.py
+src/supra_agentic/tools.py
+src/supra_agentic/web/app.js
+=== STASH LIST ===

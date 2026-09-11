@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -85,7 +85,7 @@ def list_provider_options() -> dict[str, Any]:
             metadata = provider.metadata()
             metadata["alias"] = name != provider.name
             providers.append(metadata)
-        except ValueError as exc:
+        except (ValueError, RuntimeError) as exc:
             providers.append({"name": name, "configured": False, "error": str(exc)})
     return {
         "status": "success",
@@ -95,7 +95,7 @@ def list_provider_options() -> dict[str, Any]:
 
 
 @app.get("/", response_class=HTMLResponse, tags=["UI"])
-def serve_ui() -> FileResponse:
+def serve_ui() -> Response:
     """Serve the primary Web UI."""
     index_file = STATIC_DIR / "index.html"
     if not index_file.exists():
@@ -177,12 +177,6 @@ def get_project_posture(project_id: str) -> dict[str, Any]:
 # Compat alias: the live Cloud Run deployment and all submission docs
 # reference /api/v1/demo/quick-run. Keep it working alongside the new
 # /api/v1/examples/quick-run route.
-@app.get("/api/v1/demo/quick-run", tags=["Examples"], include_in_schema=False)
-def demo_quick_run_alias() -> dict[str, Any]:
-    """Backwards-compatible alias for the historical demo URL."""
-    return example_quick_run()
-
-
 @app.get("/api/v1/examples/quick-run", tags=["Examples"])
 def example_quick_run() -> dict[str, Any]:
     """Run a deterministic example without contacting a model provider."""
@@ -205,6 +199,12 @@ def example_quick_run() -> dict[str, Any]:
         "deliverable": posture.final_output,
         "posture": posture.model_dump(),
     }
+
+
+@app.get("/api/v1/demo/quick-run", tags=["Examples"], include_in_schema=False)
+def demo_quick_run_alias() -> dict[str, Any]:
+    """Backwards-compatible alias for the historical demo URL."""
+    return example_quick_run()
 
 
 @app.post("/api/v1/mcp", tags=["WebMCP"])

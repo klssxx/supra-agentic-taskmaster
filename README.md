@@ -92,8 +92,8 @@ the separate preset for arbitrary endpoints configured with `SUPRA_BASE_URL`.
 Requirements: Python 3.11+ and Git.
 
 ```bash
-python -m pip install -e .
-uvicorn supra_agentic.service:app --host 127.0.0.1 --port 8080
+uv sync --all-extras --locked
+uv run uvicorn supra_agentic.service:app --host 127.0.0.1 --port 8080
 ```
 
 Open `http://127.0.0.1:8080`.
@@ -114,7 +114,7 @@ Open `http://127.0.0.1:8080`.
 ## Tests
 
 ```bash
-python -m pytest -q
+uv run --locked pytest -q
 ```
 
 The provider tests use an in-memory HTTP transport; they do not contact a

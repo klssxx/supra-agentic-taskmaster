@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import tempfile
 import threading
 import time
 import uuid
@@ -209,7 +210,12 @@ class ProjectStateManager:
         if p:
             try:
                 p_file = self.storage_dir / f"{project_id}.json"
-                p_file.write_text(p.model_dump_json(indent=2), encoding="utf-8")
+                with tempfile.NamedTemporaryFile(
+                    mode="w", dir=self.storage_dir, suffix=".tmp", delete=False
+                ) as tmp:
+                    tmp.write(p.model_dump_json(indent=2))
+                    tmp_path = Path(tmp.name)
+                tmp_path.replace(p_file)
             except Exception as exc:
                 logger.error(f"Failed to persist project {project_id}: {exc}")
 

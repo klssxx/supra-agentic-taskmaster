@@ -1,21 +1,113 @@
 name: CI
+
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  test:
-    runs-on: ubuntu-latest
+  quality:
+    name: quality (Python ${{ matrix.python-version }})
+    runs-on: windows-2025
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-          cache: pip
-      - run: pip install -e ".[dev]" 2>/dev/null || pip install -e . && pip install pytest httpx
-      - run: python -m pytest tests/ -q --no-header
+          python-version: ${{ matrix.python-version }}
+      # v9.0.0, tag verified with git ls-remote on 2026-09-03.
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+        with:
+          version: '0.11.28'
+          enable-cache: true
+          prune-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install locked dependencies
+        shell: pwsh
+        run: uv sync --all-extras --locked
+      - name: Run tests
+        shell: pwsh
+        run: uv run --locked pytest -q --no-header
+
+  dependency-audit:
+    name: dependency audit
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      # v9.0.0, tag verified with git ls-remote on 2026-09-03.
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+        with:
+          version: '0.11.28'
+          enable-cache: true
+          prune-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install locked dependencies
+        shell: pwsh
+        run: uv sync --all-extras --locked
+      - name: Export locked public dependencies
+        shell: pwsh
+        run: uv export --all-extras --locked --no-emit-project --format requirements-txt --output-file requirements-audit.txt
+      - name: Fail on known vulnerable dependencies
+        shell: pwsh
+        run: uv run --locked pip-audit --requirement requirements-audit.txt --strict --require-hashes --progress-spinner off
+
+  package:
+    name: package validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      # v9.0.0, tag verified with git ls-remote on 2026-09-03.
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+        with:
+          version: '0.11.28'
+          enable-cache: true
+          prune-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Build distributions
+        run: uv build
+
   docker:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t supra-ci .
+
+  ci-result:
+    name: ci-result
+    needs: [quality, dependency-audit, package, docker]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    env:
+      QUALITY_RESULT: ${{ needs.quality.result }}
+      DEPENDENCY_AUDIT_RESULT: ${{ needs.dependency-audit.result }}
+      PACKAGE_RESULT: ${{ needs.package.result }}
+      DOCKER_RESULT: ${{ needs.docker.result }}
+    steps:
+      - name: Enforce every required check
+        shell: bash
+        run: |
+          for check in QUALITY_RESULT DEPENDENCY_AUDIT_RESULT PACKAGE_RESULT DOCKER_RESULT; do
+            value="${!check}"
+            if [ "$value" != "success" ]; then
+              echo "$check did not pass: $value" >&2
+              exit 1
+            fi
+          done

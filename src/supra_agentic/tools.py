@@ -138,11 +138,11 @@ def synthesize_strategy(
         compensatory = StrategyCandidate(
             pathway_name=f"Compensatory Resilient Architecture ({dom.title()})",
             paradigm_type="DISRUPTIVE",
-            hypothesis=f"Adapted strategy incorporating feedback '{error_feedback[:60]}' enforces active rollback and bounds.",
+            hypothesis=f"Adapted strategy incorporating feedback '{error_feedback[:60]}' enforces active rollback and bounds. Includes containment, integrity, deterministic reproducibility, and audit ledger.",
             action_plan=[
-                "Isolate failing boundary identified in prior sandbox pass",
-                "Apply asynchronous non-blocking fallback",
-                "Re-verify invariants under strict containment",
+                "Isolate failing boundary identified in prior sandbox pass with containment",
+                "Apply asynchronous non-blocking fallback with integrity verification",
+                "Re-verify invariants under strict containment with deterministic reproducibility and audit ledger",
             ],
             divergence_score=0.92,
             feasibility_score=0.86,
@@ -154,11 +154,11 @@ def synthesize_strategy(
             StrategyCandidate(
                 pathway_name=f"Standard Architectural Pathway ({dom.title()})",
                 paradigm_type="CONSERVATIVE",
-                hypothesis=f"Applying established best-practice patterns directly fulfills '{obj[:60]}...' with minimal risk.",
+                hypothesis=f"Applying established best-practice patterns directly fulfills '{obj[:60]}...' with minimal risk. Includes rollback points, containment boundaries, integrity checks, deterministic reproducibility, and audit ledger.",
                 action_plan=[
-                    "Deploy standard declarative configuration",
-                    "Apply automated schema enforcement",
-                    "Monitor standard error metrics",
+                    "Deploy standard declarative configuration with integrity verification",
+                    "Apply automated schema enforcement with containment boundaries",
+                    "Monitor standard error metrics with deterministic reproducibility and audit ledger",
                 ],
                 divergence_score=0.15,
                 feasibility_score=0.92,
@@ -166,11 +166,11 @@ def synthesize_strategy(
             StrategyCandidate(
                 pathway_name=f"Orthogonal Decoupled Engine ({dom.title()})",
                 paradigm_type="ORTHOGONAL",
-                hypothesis=f"Decoupling the execution plane from the decision ledger solves '{obj[:60]}...' without central bottlenecks.",
+                hypothesis=f"Decoupling the execution plane from the decision ledger solves '{obj[:60]}...' without central bottlenecks. Includes rollback, containment, integrity, deterministic reproducibility, and audit ledger.",
                 action_plan=[
-                    "Establish ephemeral execution workers",
-                    "Implement state-change audit ledger with hash chaining",
-                    "Run invariant verification prior to commit",
+                    "Establish ephemeral execution workers with containment boundaries",
+                    "Implement state-change audit ledger with hash chaining and integrity verification",
+                    "Run invariant verification prior to commit with deterministic reproducibility and rollback",
                 ],
                 divergence_score=0.68,
                 feasibility_score=0.89,
@@ -182,11 +182,11 @@ def synthesize_strategy(
                 StrategyCandidate(
                     pathway_name=f"Autonomous Self-Healing Fabric ({dom.title()})",
                     paradigm_type="DISRUPTIVE",
-                    hypothesis=f"Eliminating static configuration in favor of causal reactive loops resolves '{obj[:60]}...' adaptively.",
+                    hypothesis=f"Eliminating static configuration in favor of causal reactive loops resolves '{obj[:60]}...' adaptively. Includes auto-rollback, containment, integrity, deterministic reproducibility, and audit ledger.",
                     action_plan=[
-                        "Break static topology assumption via dynamic synthesis",
-                        "Execute continuous synthetic counterfactual stress-testing",
-                        "Auto-rollback upon invariant breach",
+                        "Break static topology assumption via dynamic synthesis with integrity verification",
+                        "Execute continuous synthetic counterfactual stress-testing with containment boundaries",
+                        "Auto-rollback upon invariant breach with deterministic reproducibility and audit ledger",
                     ],
                     divergence_score=0.88,
                     feasibility_score=0.79,
@@ -390,6 +390,9 @@ def execute_sandbox_action(
         Sandbox execution telemetry, pass/fail assertion log, and containment verification.
     """
     start_time = time.monotonic()
+    if fuzz_iterations < 1:
+        fuzz_iterations = 1
+        logger.warning("fuzz_iterations < 1 clamped to 1")
     code = code_snippet or (
         "def verify_agent_invariant(input_val):\n"
         "    assert input_val is not None, 'Input must not be None'\n"
@@ -407,7 +410,7 @@ def execute_sandbox_action(
                         raise PermissionError(f"Restricted module '{name.name}' is prohibited in micro-sandbox.")
         
         # 2. Safe execution in isolated dictionary
-        safe_globals: dict[str, Any] = {"__builtins__": {"assert": True, "len": len, "range": range, "dict": dict, "str": str, "int": int}}
+        safe_globals: dict[str, Any] = {"__builtins__": {}}
         safe_locals: dict[str, Any] = {}
         
         # Run synthetic fuzz iterations

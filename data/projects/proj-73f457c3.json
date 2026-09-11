@@ -1,0 +1,225 @@
+{
+  "project_id": "proj-73f457c3",
+  "objective": "MCP test 15",
+  "stage": "COMPLETED",
+  "created_at": 1789039415.2996175,
+  "updated_at": 1789039415.3136802,
+  "decomposition": {
+    "domain": "general",
+    "core_objective": "MCP test 15",
+    "invariants": [
+      "System integrity and memory boundary must be preserved",
+      "Deterministic reproducibility of core verification evidence",
+      "Zero uncontained side effects outside designated execution scope"
+    ],
+    "mutable_assumptions": [
+      "Synchronous centralized coordination at every step",
+      "Static signature-based validation or polling intervals",
+      "Default monolithic architecture assumption"
+    ],
+    "risk_factors": [
+      "Unbounded state growth or timeout",
+      "Implicit coupling between tool pipelines",
+      "False confidence from non-falsifiable metrics"
+    ],
+    "subtasks": [
+      {
+        "task_id": "sub-85570e",
+        "title": "Parse & Map Causal Invariants",
+        "description": "Map boundaries for general objective.",
+        "stage_target": "STRUCTURED",
+        "status": "COMPLETED"
+      },
+      {
+        "task_id": "sub-6a7e7c",
+        "title": "Synthesize Multi-Paradigm Pathways",
+        "description": "Generate orthogonal and disruptive strategies.",
+        "stage_target": "STRATIFIED",
+        "status": "PENDING"
+      },
+      {
+        "task_id": "sub-5f2335",
+        "title": "Execute Sandbox Verification & Self-Correction",
+        "description": "Verify hypotheses and auto-correct in isolated execution sandbox.",
+        "stage_target": "SANDBOX_VERIFIED",
+        "status": "PENDING"
+      }
+    ],
+    "timestamp": 1789039415.3061407
+  },
+  "candidates": [
+    {
+      "candidate_id": "cand-35bbb0",
+      "pathway_name": "Standard Architectural Pathway (General)",
+      "paradigm_type": "CONSERVATIVE",
+      "hypothesis": "Applying established best-practice patterns directly fulfills 'MCP test 15...' with minimal risk.",
+      "action_plan": [
+        "Deploy standard declarative configuration",
+        "Apply automated schema enforcement",
+        "Monitor standard error metrics"
+      ],
+      "divergence_score": 0.15,
+      "feasibility_score": 0.92,
+      "is_selected": false
+    },
+    {
+      "candidate_id": "cand-6c0d18",
+      "pathway_name": "Orthogonal Decoupled Engine (General)",
+      "paradigm_type": "ORTHOGONAL",
+      "hypothesis": "Decoupling the execution plane from the decision ledger solves 'MCP test 15...' without central bottlenecks.",
+      "action_plan": [
+        "Establish ephemeral execution workers",
+        "Implement state-change audit ledger with hash chaining",
+        "Run invariant verification prior to commit"
+      ],
+      "divergence_score": 0.68,
+      "feasibility_score": 0.89,
+      "is_selected": false
+    },
+    {
+      "candidate_id": "cand-e36deb",
+      "pathway_name": "Autonomous Self-Healing Fabric (General)",
+      "paradigm_type": "DISRUPTIVE",
+      "hypothesis": "Eliminating static configuration in favor of causal reactive loops resolves 'MCP test 15...' adaptively.",
+      "action_plan": [
+        "Break static topology assumption via dynamic synthesis",
+        "Execute continuous synthetic counterfactual stress-testing",
+        "Auto-rollback upon invariant breach"
+      ],
+      "divergence_score": 0.88,
+      "feasibility_score": 0.79,
+      "is_selected": true
+    }
+  ],
+  "selected_candidate": {
+    "candidate_id": "cand-e36deb",
+    "pathway_name": "Autonomous Self-Healing Fabric (General)",
+    "paradigm_type": "DISRUPTIVE",
+    "hypothesis": "Eliminating static configuration in favor of causal reactive loops resolves 'MCP test 15...' adaptively.",
+    "action_plan": [
+      "Break static topology assumption via dynamic synthesis",
+      "Execute continuous synthetic counterfactual stress-testing",
+      "Auto-rollback upon invariant breach"
+    ],
+    "divergence_score": 0.88,
+    "feasibility_score": 0.79,
+    "is_selected": true
+  },
+  "verification": {
+    "report_id": "rep-31286b",
+    "candidate_id": "cand-e36deb",
+    "invariants_preserved": false,
+    "invariants_checked": [
+      "System integrity and memory boundary must be preserved",
+      "Deterministic reproducibility of core verification evidence",
+      "Zero uncontained side effects outside designated execution scope"
+    ],
+    "vulnerabilities_detected": [
+      "System integrity and memory boundary must be preserved",
+      "Deterministic reproducibility of core verification evidence"
+    ],
+    "confidence_score": 0.0,
+    "verdict": "FAIL",
+    "rationale": "Evidencia ejecutada sobre 'Autonomous Self-Healing Fabric (General)': 0/3 invariantes con prueba PASS, 2 FAIL, 1 NOT_EVALUATED.",
+    "evidence": [
+      {
+        "invariant": "System integrity and memory boundary must be preserved",
+        "status": "FAIL",
+        "test": "el plan/hipótesis del candidato cubre 'containment'",
+        "counterexample": "efecto fuera del perímetro designado"
+      },
+      {
+        "invariant": "Deterministic reproducibility of core verification evidence",
+        "status": "FAIL",
+        "test": "el plan/hipótesis del candidato cubre 'determin'",
+        "counterexample": "dos ejecuciones con la misma semilla divergen"
+      },
+      {
+        "invariant": "Zero uncontained side effects outside designated execution scope",
+        "status": "NOT_EVALUATED",
+        "test": "sin prueba ejecutable vinculada al candidato",
+        "counterexample": ""
+      }
+    ],
+    "timestamp": 1789039415.3096611
+  },
+  "sandbox_results": [
+    {
+      "execution_id": "exec-8d6b89",
+      "action_type": "SYNTHETIC_CODE_FUZZ",
+      "passed": true,
+      "output_log": "AST parse verified cleanly. Passed 5/5 synthetic fuzz checks in 0.00ms.",
+      "duration_ms": 0.0,
+      "side_effects_contained": true,
+      "timestamp": 1789039415.3116713
+    }
+  ],
+  "checkpoints": [
+    {
+      "checkpoint_id": "chk-7999ff",
+      "stage": "RECEIVED",
+      "title": "Project Initialized",
+      "evidence_summary": "Objective registered: 'MCP test 15...'",
+      "actor": "system:session_manager",
+      "timestamp": 1789039415.2996175
+    },
+    {
+      "checkpoint_id": "chk-2d33ea",
+      "stage": "STRUCTURED",
+      "title": "Objective Structured",
+      "evidence_summary": "Decomposed into 3 invariants, 3 mutable assumptions, and 3 subtasks.",
+      "actor": "agent:supra:decompose",
+      "timestamp": 1789039415.3061407
+    },
+    {
+      "checkpoint_id": "chk-3f0659",
+      "stage": "STRATIFIED",
+      "title": "Strategies Synthesized",
+      "evidence_summary": "Generated 3 strategic candidates. Selected primary pathway: 'Autonomous Self-Healing Fabric (General)'.",
+      "actor": "agent:supra:strategy",
+      "timestamp": 1789039415.3076503
+    },
+    {
+      "checkpoint_id": "chk-524516",
+      "stage": "STRATIFIED",
+      "title": "Verification Conducted",
+      "evidence_summary": "Verdict: FAIL (Confidence: 0.00). Invariants Preserved: False.",
+      "actor": "agent:supra:verifier",
+      "timestamp": 1789039415.3096611
+    },
+    {
+      "checkpoint_id": "chk-f85905",
+      "stage": "SANDBOX_VERIFIED",
+      "title": "Sandbox Execution",
+      "evidence_summary": "Executed SYNTHETIC_CODE_FUZZ in 0.0ms. Passed: True.",
+      "actor": "agent:supra:sandbox",
+      "timestamp": 1789039415.3116713
+    },
+    {
+      "checkpoint_id": "chk-277642",
+      "stage": "COMPLETED",
+      "title": "Taskmaster Mission Complete",
+      "evidence_summary": "All 5 stages completed autonomously with verifiable proof and telemetry.",
+      "actor": "agent:supra:coordinator",
+      "timestamp": 1789039415.3136802
+    }
+  ],
+  "final_output": {
+    "title": "Autonomous Solution: MCP test 15",
+    "project_id": "proj-73f457c3",
+    "summary": "Taskmaster completed all 5 stages in 0.02s (Self-Corrections: 0).",
+    "null_hypothesis_h0": "H0: The autonomous architecture 'Autonomous Self-Healing Fabric (General)' fails to outperform standard baseline under stress or introduces uncontained side-effects.",
+    "objective": "MCP test 15",
+    "domain": "general",
+    "selected_strategy": "Autonomous Self-Healing Fabric (General)",
+    "verification_verdict": "FAIL",
+    "checkpoints_count": 6,
+    "timestamp": 1789039415.3136802,
+    "model_assistance": {
+      "enabled": false,
+      "provider": "hermes"
+    },
+    "audit_sha256": "1d8b9dc3734a3a8ebc41f3bfc2aed67fc9143c08205eab161b8f55afd531517a"
+  },
+  "error_message": null
+}

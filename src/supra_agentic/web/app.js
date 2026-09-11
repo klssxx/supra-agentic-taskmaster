@@ -89,6 +89,16 @@ function setUIState(status, stage, posture) {
     }
 }
 
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 function renderProjectPosture(posture) {
     setUIState('COMPLETED', posture.stage, posture);
     
@@ -103,15 +113,15 @@ function renderProjectPosture(posture) {
         <div class="result-section">
             <h4>01. Deconstructed Invariants & Mutable Assumptions</h4>
             <div style="font-size: 0.85rem; margin-bottom: 0.5rem;">
-                <strong>Domain:</strong> <span class="mono-text">${decomp ? decomp.domain : 'general'}</span> | 
-                <strong>Objective:</strong> ${posture.objective}
+                <strong>Domain:</strong> <span class="mono-text">${escapeHtml(decomp ? decomp.domain : 'general')}</span> | 
+                <strong>Objective:</strong> ${escapeHtml(posture.objective)}
             </div>
             <div class="invariants-grid">
                 ${decomp ? decomp.invariants.map(inv => `
-                    <div style="font-size: 0.8rem; color: #10B981;">&check; [INVARIANT] ${inv}</div>
+                    <div style="font-size: 0.8rem; color: #10B981;">&check; [INVARIANT] ${escapeHtml(inv)}</div>
                 `).join('') : ''}
                 ${decomp ? decomp.mutable_assumptions.map(mut => `
-                    <div style="font-size: 0.8rem; color: #94A3B8;">&bull; [MUTABLE ASSUMPTION CHALLENGED] <span style="text-decoration: line-through;">${mut}</span></div>
+                    <div style="font-size: 0.8rem; color: #94A3B8;">&bull; [MUTABLE ASSUMPTION CHALLENGED] <span style="text-decoration: line-through;">${escapeHtml(mut)}</span></div>
                 `).join('') : ''}
             </div>
         </div>
@@ -122,10 +132,10 @@ function renderProjectPosture(posture) {
                 ${posture.candidates ? posture.candidates.map(c => `
                     <div class="candidate-card ${c.is_selected ? 'selected' : ''}">
                         <div class="candidate-header">
-                            <span>${c.pathway_name}</span>
-                            <span class="badge ${c.is_selected ? 'badge-primary' : ''}">${c.paradigm_type}</span>
+                            <span>${escapeHtml(c.pathway_name)}</span>
+                            <span class="badge ${c.is_selected ? 'badge-primary' : ''}">${escapeHtml(c.paradigm_type)}</span>
                         </div>
-                        <p style="font-size: 0.8rem; color: #94A3B8; margin-bottom: 0.35rem;">${c.hypothesis}</p>
+                        <p style="font-size: 0.8rem; color: #94A3B8; margin-bottom: 0.35rem;">${escapeHtml(c.hypothesis)}</p>
                         <div class="candidate-meta mono-text">
                             Feasibility: ${(c.feasibility_score * 100).toFixed(0)}% | Divergence: ${(c.divergence_score * 100).toFixed(0)}%
                         </div>
@@ -137,15 +147,15 @@ function renderProjectPosture(posture) {
         <div class="result-section">
             <h4>03. System Verification & Micro-Sandbox Telemetry</h4>
             <div style="font-size: 0.85rem;">
-                <strong>Verdict:</strong> <span style="color: #10B981; font-weight: 700;">${ver ? ver.verdict : 'PASS'}</span> 
+                <strong>Verdict:</strong> <span style="color: #10B981; font-weight: 700;">${escapeHtml(ver ? ver.verdict : 'PASS')}</span> 
                 (Confidence: ${ver ? (ver.confidence_score * 100).toFixed(1) : 95}%)
             </div>
             <div style="font-size: 0.8rem; color: #94A3B8; margin-top: 0.25rem;">
-                ${ver ? ver.rationale : 'All system invariants rigorously satisfied.'}
+                ${escapeHtml(ver ? ver.rationale : 'All system invariants rigorously satisfied.')}
             </div>
             ${sb ? `
                 <div style="background: #000; padding: 0.5rem; border-radius: 4px; font-family: monospace; font-size: 0.75rem; color: #00FFCC; margin-top: 0.5rem;">
-                    [SANDBOX PASS] ${sb.output_log} (${sb.duration_ms}ms)
+                    [SANDBOX PASS] ${escapeHtml(sb.output_log)} (${sb.duration_ms}ms)
                 </div>
             ` : ''}
         </div>
@@ -153,7 +163,7 @@ function renderProjectPosture(posture) {
         <div class="result-section">
             <h4>04. Empirical Falsification Hypothesis (H0)</h4>
             <div style="font-size: 0.8rem; color: #F59E0B; background: rgba(245, 158, 11, 0.08); padding: 0.6rem; border-radius: 6px; border: 1px solid rgba(245, 158, 11, 0.2);">
-                <strong>Falsifiable Null Hypothesis:</strong> ${out && out.null_hypothesis_h0 ? out.null_hypothesis_h0 : 'H0 verified against baseline.'}
+                <strong>Falsifiable Null Hypothesis:</strong> ${escapeHtml(out && out.null_hypothesis_h0 ? out.null_hypothesis_h0 : 'H0 verified against baseline.')}
             </div>
         </div>
 
@@ -161,7 +171,7 @@ function renderProjectPosture(posture) {
             <h4>05. Checkpoint Audit Ledger</h4>
             <div style="font-size: 0.75rem; color: #94A3B8;">
                 ${posture.checkpoints.map(chk => `
-                    <div>&bull; <strong>[${chk.stage}]</strong> <code>${chk.actor}</code>: ${chk.title} — <em>${chk.evidence_summary}</em></div>
+                    <div>&bull; <strong>[${escapeHtml(chk.stage)}]</strong> <code>${escapeHtml(chk.actor)}</code>: ${escapeHtml(chk.title)} — <em>${escapeHtml(chk.evidence_summary)}</em></div>
                 `).join('')}
             </div>
         </div>

@@ -1,0 +1,222 @@
+{
+  "project_id": "proj-07834b67",
+  "objective": "Test SUPRA",
+  "stage": "COMPLETED",
+  "created_at": 1789070795.3681672,
+  "updated_at": 1789070795.3846805,
+  "decomposition": {
+    "domain": "general",
+    "core_objective": "Test SUPRA",
+    "invariants": [
+      "System integrity and memory boundary must be preserved",
+      "Deterministic reproducibility of core verification evidence",
+      "Zero uncontained side effects outside designated execution scope"
+    ],
+    "mutable_assumptions": [
+      "Synchronous centralized coordination at every step",
+      "Static signature-based validation or polling intervals",
+      "Default monolithic architecture assumption"
+    ],
+    "risk_factors": [
+      "Unbounded state growth or timeout",
+      "Implicit coupling between tool pipelines",
+      "False confidence from non-falsifiable metrics"
+    ],
+    "subtasks": [
+      {
+        "task_id": "sub-96b920",
+        "title": "Parse & Map Causal Invariants",
+        "description": "Map boundaries for general objective.",
+        "stage_target": "STRUCTURED",
+        "status": "COMPLETED"
+      },
+      {
+        "task_id": "sub-c5249f",
+        "title": "Synthesize Multi-Paradigm Pathways",
+        "description": "Generate orthogonal and disruptive strategies.",
+        "stage_target": "STRATIFIED",
+        "status": "PENDING"
+      },
+      {
+        "task_id": "sub-65078f",
+        "title": "Execute Sandbox Verification & Self-Correction",
+        "description": "Verify hypotheses and auto-correct in isolated execution sandbox.",
+        "stage_target": "SANDBOX_VERIFIED",
+        "status": "PENDING"
+      }
+    ],
+    "timestamp": 1789070795.3711674
+  },
+  "candidates": [
+    {
+      "candidate_id": "cand-b46232",
+      "pathway_name": "Standard Architectural Pathway (General)",
+      "paradigm_type": "CONSERVATIVE",
+      "hypothesis": "Applying established best-practice patterns directly fulfills 'Test SUPRA...' with minimal risk. Includes rollback points, containment boundaries, integrity checks, deterministic reproducibility, and audit ledger.",
+      "action_plan": [
+        "Deploy standard declarative configuration with integrity verification",
+        "Apply automated schema enforcement with containment boundaries",
+        "Monitor standard error metrics with deterministic reproducibility and audit ledger"
+      ],
+      "divergence_score": 0.15,
+      "feasibility_score": 0.92,
+      "is_selected": false
+    },
+    {
+      "candidate_id": "cand-0cca8c",
+      "pathway_name": "Orthogonal Decoupled Engine (General)",
+      "paradigm_type": "ORTHOGONAL",
+      "hypothesis": "Decoupling the execution plane from the decision ledger solves 'Test SUPRA...' without central bottlenecks. Includes rollback, containment, integrity, deterministic reproducibility, and audit ledger.",
+      "action_plan": [
+        "Establish ephemeral execution workers with containment boundaries",
+        "Implement state-change audit ledger with hash chaining and integrity verification",
+        "Run invariant verification prior to commit with deterministic reproducibility and rollback"
+      ],
+      "divergence_score": 0.68,
+      "feasibility_score": 0.89,
+      "is_selected": false
+    },
+    {
+      "candidate_id": "cand-446e8d",
+      "pathway_name": "Autonomous Self-Healing Fabric (General)",
+      "paradigm_type": "DISRUPTIVE",
+      "hypothesis": "Eliminating static configuration in favor of causal reactive loops resolves 'Test SUPRA...' adaptively. Includes auto-rollback, containment, integrity, deterministic reproducibility, and audit ledger.",
+      "action_plan": [
+        "Break static topology assumption via dynamic synthesis with integrity verification",
+        "Execute continuous synthetic counterfactual stress-testing with containment boundaries",
+        "Auto-rollback upon invariant breach with deterministic reproducibility and audit ledger"
+      ],
+      "divergence_score": 0.88,
+      "feasibility_score": 0.79,
+      "is_selected": true
+    }
+  ],
+  "selected_candidate": {
+    "candidate_id": "cand-446e8d",
+    "pathway_name": "Autonomous Self-Healing Fabric (General)",
+    "paradigm_type": "DISRUPTIVE",
+    "hypothesis": "Eliminating static configuration in favor of causal reactive loops resolves 'Test SUPRA...' adaptively. Includes auto-rollback, containment, integrity, deterministic reproducibility, and audit ledger.",
+    "action_plan": [
+      "Break static topology assumption via dynamic synthesis with integrity verification",
+      "Execute continuous synthetic counterfactual stress-testing with containment boundaries",
+      "Auto-rollback upon invariant breach with deterministic reproducibility and audit ledger"
+    ],
+    "divergence_score": 0.88,
+    "feasibility_score": 0.79,
+    "is_selected": true
+  },
+  "verification": {
+    "report_id": "rep-aaa5d0",
+    "candidate_id": "cand-446e8d",
+    "invariants_preserved": true,
+    "invariants_checked": [
+      "System integrity and memory boundary must be preserved",
+      "Deterministic reproducibility of core verification evidence",
+      "Zero uncontained side effects outside designated execution scope"
+    ],
+    "vulnerabilities_detected": [],
+    "confidence_score": 0.667,
+    "verdict": "CONDITIONAL_PASS",
+    "rationale": "Evidencia ejecutada sobre 'Autonomous Self-Healing Fabric (General)': 2/3 invariantes con prueba PASS, 0 FAIL, 1 NOT_EVALUATED.",
+    "evidence": [
+      {
+        "invariant": "System integrity and memory boundary must be preserved",
+        "status": "PASS",
+        "test": "el plan/hipótesis del candidato cubre 'containment'",
+        "counterexample": ""
+      },
+      {
+        "invariant": "Deterministic reproducibility of core verification evidence",
+        "status": "PASS",
+        "test": "el plan/hipótesis del candidato cubre 'determin'",
+        "counterexample": ""
+      },
+      {
+        "invariant": "Zero uncontained side effects outside designated execution scope",
+        "status": "NOT_EVALUATED",
+        "test": "sin prueba ejecutable vinculada al candidato",
+        "counterexample": ""
+      }
+    ],
+    "timestamp": 1789070795.3741665
+  },
+  "sandbox_results": [
+    {
+      "execution_id": "exec-8078f1",
+      "action_type": "SYNTHETIC_CODE_FUZZ",
+      "passed": true,
+      "output_log": "AST parse verified cleanly. Passed 5/5 synthetic fuzz checks in 0.00ms.",
+      "duration_ms": 0.0,
+      "side_effects_contained": true,
+      "timestamp": 1789070795.382676
+    }
+  ],
+  "checkpoints": [
+    {
+      "checkpoint_id": "chk-a61d2a",
+      "stage": "RECEIVED",
+      "title": "Project Initialized",
+      "evidence_summary": "Objective registered: 'Test SUPRA...'",
+      "actor": "system:session_manager",
+      "timestamp": 1789070795.3681672
+    },
+    {
+      "checkpoint_id": "chk-b20558",
+      "stage": "STRUCTURED",
+      "title": "Objective Structured",
+      "evidence_summary": "Decomposed into 3 invariants, 3 mutable assumptions, and 3 subtasks.",
+      "actor": "agent:supra:decompose",
+      "timestamp": 1789070795.3711674
+    },
+    {
+      "checkpoint_id": "chk-78faa4",
+      "stage": "STRATIFIED",
+      "title": "Strategies Synthesized",
+      "evidence_summary": "Generated 3 strategic candidates. Selected primary pathway: 'Autonomous Self-Healing Fabric (General)'.",
+      "actor": "agent:supra:strategy",
+      "timestamp": 1789070795.3721662
+    },
+    {
+      "checkpoint_id": "chk-a33ea1",
+      "stage": "STRATIFIED",
+      "title": "Verification Conducted",
+      "evidence_summary": "Verdict: CONDITIONAL_PASS (Confidence: 0.67). Invariants Preserved: True.",
+      "actor": "agent:supra:verifier",
+      "timestamp": 1789070795.3741665
+    },
+    {
+      "checkpoint_id": "chk-9be259",
+      "stage": "SANDBOX_VERIFIED",
+      "title": "Sandbox Execution",
+      "evidence_summary": "Executed SYNTHETIC_CODE_FUZZ in 0.0ms. Passed: True.",
+      "actor": "agent:supra:sandbox",
+      "timestamp": 1789070795.382676
+    },
+    {
+      "checkpoint_id": "chk-9ee57f",
+      "stage": "COMPLETED",
+      "title": "Taskmaster Mission Complete",
+      "evidence_summary": "All 5 stages completed autonomously with verifiable proof and telemetry.",
+      "actor": "agent:supra:coordinator",
+      "timestamp": 1789070795.3846805
+    }
+  ],
+  "final_output": {
+    "title": "Autonomous Solution: Test SUPRA",
+    "project_id": "proj-07834b67",
+    "summary": "Taskmaster completed all 5 stages in 0.01s (Self-Corrections: 0).",
+    "null_hypothesis_h0": "H0: The autonomous architecture 'Autonomous Self-Healing Fabric (General)' fails to outperform standard baseline under stress or introduces uncontained side-effects.",
+    "objective": "Test SUPRA",
+    "domain": "general",
+    "selected_strategy": "Autonomous Self-Healing Fabric (General)",
+    "verification_verdict": "CONDITIONAL_PASS",
+    "checkpoints_count": 6,
+    "timestamp": 1789070795.3846805,
+    "model_assistance": {
+      "enabled": false,
+      "provider": "hermes"
+    },
+    "audit_sha256": "5c9b60ddc0091eb3fa0d609cb753ab2ed083e512e7d8e615fd8652f70a9f832c"
+  },
+  "error_message": null
+}

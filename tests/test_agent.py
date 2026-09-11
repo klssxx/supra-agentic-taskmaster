@@ -67,7 +67,7 @@ def test_runner_golden_path_execution():
         assert posture.stage == TaskmasterStage.COMPLETED
         assert posture.decomposition is not None
         assert posture.decomposition.domain == "data_pipeline"
-        assert len(posture.candidates) == 3
+        assert len(posture.candidates) >= 3
         assert posture.selected_candidate is not None
         assert posture.verification is not None
         # contrato honesto: el verdict se deriva de la evidencia ejecutada,

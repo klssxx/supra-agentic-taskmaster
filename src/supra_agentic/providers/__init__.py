@@ -7,6 +7,7 @@ from typing import Any
 
 from .base import AgentProvider, ProviderError, ProviderResponse, ProviderUnavailable, ToolInput, ToolSpec
 from .hermes import HermesProvider
+from .nebius import get_nebius_provider, is_nebius_available, nebius_metadata
 from .openai_compatible import OpenAICompatibleProvider
 
 
@@ -71,6 +72,8 @@ _PROVIDER_FACTORIES: dict[str, ProviderFactory] = {
     "nous": HermesProvider,
     "ollama": OllamaProvider,
     "openai": OpenAIProvider,
+    "nebius": get_nebius_provider,
+    "nebius-token-factory": get_nebius_provider,
     "openai-compatible": CustomProvider,
     "custom": CustomProvider,
 }
@@ -103,6 +106,9 @@ __all__ = [
     "ProviderUnavailable",
     "ToolInput",
     "ToolSpec",
+    "get_nebius_provider",
     "get_provider",
+    "is_nebius_available",
+    "nebius_metadata",
     "provider_names",
 ]
