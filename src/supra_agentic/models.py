@@ -1,4 +1,5 @@
 """Domain Models and Data Schemas for SUPRA Agentic Taskmaster."""
+
 from __future__ import annotations
 
 import time
@@ -10,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class TaskmasterStage(str, Enum):
     """5 Canonical Stages of the Taskmaster Agent Lifecycle."""
+
     RECEIVED = "RECEIVED"
     STRUCTURED = "STRUCTURED"
     STRATIFIED = "STRATIFIED"

@@ -1,4 +1,5 @@
 """Tests for the SUPRA FastAPI service and provider-neutral endpoints."""
+
 import tempfile
 from fastapi.testclient import TestClient
 from supra_agentic.service import app
@@ -44,25 +45,35 @@ def test_webmcp_jsonrpc_protocol():
         state_manager.storage_dir = type(state_manager.storage_dir)(tmpdir)
 
         # 1. initialize
-        init_res = client.post("/api/v1/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "initialize"})
+        init_res = client.post(
+            "/api/v1/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "initialize"}
+        )
         assert init_res.status_code == 200
         assert init_res.json()["result"]["serverInfo"]["name"] == "supra-agentic-taskmaster"
 
         # 2. tools/list
-        tools_res = client.post("/api/v1/mcp", json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+        tools_res = client.post(
+            "/api/v1/mcp", json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"}
+        )
         assert tools_res.status_code == 200
         assert len(tools_res.json()["result"]["tools"]) >= 5
 
         # 3. tools/call supra_quick_run
-        call_res = client.post("/api/v1/mcp", json={
-            "jsonrpc": "2.0",
-            "id": 3,
-            "method": "tools/call",
-            "params": {
-                "name": "supra_quick_run",
-                "arguments": {"objective": "Test WebMCP autonomous task run", "domain": "general"}
-            }
-        })
+        call_res = client.post(
+            "/api/v1/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": {
+                    "name": "supra_quick_run",
+                    "arguments": {
+                        "objective": "Test WebMCP autonomous task run",
+                        "domain": "general",
+                    },
+                },
+            },
+        )
         assert call_res.status_code == 200
         assert "COMPLETED" in call_res.json()["result"]["content"][0]["text"]
 

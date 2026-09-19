@@ -6,6 +6,7 @@ prefijadas (feasibility*0.7+divergence*0.3+0.15) — sin ejecutar ninguna prueba
 Estas pruebas FALSAN ese comportamiento: ahora el verdict se deriva de la
 evidencia ejecutada, y NOT_EVALUATED cuando no hay prueba que ejecutar.
 """
+
 from __future__ import annotations
 
 import tempfile
@@ -45,8 +46,10 @@ def test_verdict_deriva_de_evidencia_no_de_puntuaciones_prefijadas():
 def test_not_evaluated_cuando_invariante_sin_prueba():
     """Un invariante sin prueba ejecutable queda NOT_EVALUATED, nunca PASS fabricado."""
     cand = StrategyCandidate(
-        pathway_name="X", paradigm_type="CONSERVATIVE",
-        hypothesis="algo", action_plan=["desplegar"],
+        pathway_name="X",
+        paradigm_type="CONSERVATIVE",
+        hypothesis="algo",
+        action_plan=["desplegar"],
     )
     evidence = _run_invariant_evidence(cand, ["Comportamiento cuántico emergente estable"])
     assert evidence[0]["status"] == "NOT_EVALUATED"
@@ -55,12 +58,14 @@ def test_not_evaluated_cuando_invariante_sin_prueba():
 def test_invariante_no_cubierto_da_fail_con_contraejemplo():
     """Un candidato que NO cubre un invariante evaluable produce FAIL con refutación."""
     cand = StrategyCandidate(
-        pathway_name="X", paradigm_type="DISRUPTIVE",
+        pathway_name="X",
+        paradigm_type="DISRUPTIVE",
         hypothesis="sintetizar topología dinámica",
         action_plan=["romper topología estática", "sintetizar"],
     )
     evidence = _run_invariant_evidence(
-        cand, ["Deterministic reproducibility of core verification evidence"])
+        cand, ["Deterministic reproducibility of core verification evidence"]
+    )
     assert evidence[0]["status"] == "FAIL"
     assert evidence[0]["counterexample"]  # refutación concreta registrada
 
@@ -68,12 +73,14 @@ def test_invariante_no_cubierto_da_fail_con_contraejemplo():
 def test_invariante_cubierto_da_pass():
     """Un candidato que SÍ cubre el invariante produce PASS."""
     cand = StrategyCandidate(
-        pathway_name="X", paradigm_type="CONSERVATIVE",
+        pathway_name="X",
+        paradigm_type="CONSERVATIVE",
         hypothesis="reproducibilidad determinista por semilla",
         action_plan=["fijar semilla", "verificar determinismo"],
     )
     evidence = _run_invariant_evidence(
-        cand, ["Deterministic reproducibility of core verification evidence"])
+        cand, ["Deterministic reproducibility of core verification evidence"]
+    )
     assert evidence[0]["status"] == "PASS"
 
 

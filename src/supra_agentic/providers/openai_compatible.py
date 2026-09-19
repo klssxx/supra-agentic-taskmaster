@@ -1,4 +1,5 @@
 """OpenAI-compatible HTTP provider used by local and cloud backends."""
+
 from __future__ import annotations
 
 import os
@@ -8,7 +9,14 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from .base import AgentProvider, ProviderError, ProviderResponse, ProviderUnavailable, ToolInput, ToolSpec
+from .base import (
+    AgentProvider,
+    ProviderError,
+    ProviderResponse,
+    ProviderUnavailable,
+    ToolInput,
+    ToolSpec,
+)
 
 
 _AUTO_MODELS = {"", "auto", "default"}
@@ -87,7 +95,9 @@ class OpenAICompatibleProvider(AgentProvider):
         self.base_url = _normalize_base_url(base_url)
         self.api_key = api_key.strip() if api_key and api_key.strip() else None
         self.default_model = (default_model or "").strip()
-        self.timeout = timeout if timeout is not None else _env_float("SUPRA_PROVIDER_TIMEOUT", 60.0)
+        self.timeout = (
+            timeout if timeout is not None else _env_float("SUPRA_PROVIDER_TIMEOUT", 60.0)
+        )
         if self.timeout <= 0:
             raise ValueError("Provider timeout must be greater than zero")
         self._transport = transport
@@ -138,7 +148,9 @@ class OpenAICompatibleProvider(AgentProvider):
         except ValueError:
             return []
         raw_models = payload.get("data", []) if isinstance(payload, Mapping) else []
-        models = [str(item["id"]) for item in raw_models if isinstance(item, Mapping) and item.get("id")]
+        models = [
+            str(item["id"]) for item in raw_models if isinstance(item, Mapping) and item.get("id")
+        ]
         self._cached_models = models
         return list(models)
 

@@ -23,8 +23,10 @@ jobs:
       matrix:
         python-version: ['3.11', '3.12']
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      # v7.0.1, tag verified with git ls-remote on 2026-09-19.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      # v7.0.0, tag verified with git ls-remote on 2026-09-19.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: ${{ matrix.python-version }}
       # v9.0.0, tag verified with git ls-remote on 2026-09-03.
@@ -41,13 +43,80 @@ jobs:
         shell: pwsh
         run: uv run --locked pytest -q --no-header
 
+  lint-types:
+    name: lint and type checks
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      # v7.0.1, tag verified with git ls-remote on 2026-09-19.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      # v7.0.0, tag verified with git ls-remote on 2026-09-19.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.11'
+      # v9.0.0, tag verified with git ls-remote on 2026-09-03.
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+        with:
+          version: '0.11.28'
+          enable-cache: true
+          prune-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install locked dependencies
+        shell: pwsh
+        run: uv sync --all-extras --locked
+      - name: Ruff check
+        shell: pwsh
+        run: uv run --locked ruff check
+      - name: Ruff format check
+        shell: pwsh
+        run: uv run --locked ruff format --check
+      - name: Mypy (no strict)
+        shell: pwsh
+        run: uv run --locked mypy src/supra_agentic
+
+  secrets-scan:
+    name: secret scan
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      # v7.0.1, tag verified with git ls-remote on 2026-09-19.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Download and verify Trivy for Windows
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = Join-Path $env:RUNNER_TEMP 'trivy_0.72.0_windows-64bit.zip'
+          $toolDir = Join-Path $env:RUNNER_TEMP 'trivy-0.72.0'
+          Invoke-WebRequest -Uri 'https://github.com/aquasecurity/trivy/releases/download/v0.72.0/trivy_0.72.0_windows-64bit.zip' -OutFile $archive
+          $expected = 'ed3cf122060f61818fe1f735fd97557954e16e10bc8b058af9852271cf2e91b3'
+          $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "Trivy checksum mismatch: $actual" }
+          Expand-Archive -LiteralPath $archive -DestinationPath $toolDir -Force
+          "TRIVY_EXE=$(Join-Path $toolDir 'trivy.exe')" | Add-Content -LiteralPath $env:GITHUB_ENV
+      - name: Fail on secrets
+        shell: pwsh
+        run: |
+          & $env:TRIVY_EXE fs `
+            --scanners secret `
+            --exit-code 1 `
+            --skip-dirs .git `
+            --skip-dirs .venv `
+            --skip-dirs data `
+            .
+          exit $LASTEXITCODE
+
   dependency-audit:
     name: dependency audit
     runs-on: windows-2025
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      # v7.0.1, tag verified with git ls-remote on 2026-09-19.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      # v7.0.0, tag verified with git ls-remote on 2026-09-19.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.11'
       # v9.0.0, tag verified with git ls-remote on 2026-09-03.
@@ -72,7 +141,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      # v7.0.1, tag verified with git ls-remote on 2026-09-19.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       # v9.0.0, tag verified with git ls-remote on 2026-09-03.
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
         with:
@@ -87,16 +157,36 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - run: docker build -t supra-ci .
+      # v7.0.1, tag verified with git ls-remote on 2026-09-19.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Build image
+        run: docker build -t supra-ci .
+      - name: Run and health check
+        run: |
+          docker run -d --name supra-ci-ctr -p 8080:8080 supra-ci
+          ok=0
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/health >/dev/null 2>&1; then ok=1; break; fi
+            sleep 2
+          done
+          if [ "$ok" != "1" ]; then
+            echo 'health endpoint never became ready'
+            docker logs supra-ci-ctr
+            docker stop supra-ci-ctr || true
+            exit 1
+          fi
+          curl -fsS http://localhost:8080/health
+          docker stop supra-ci-ctr
 
   ci-result:
     name: ci-result
-    needs: [quality, dependency-audit, package, docker]
+    needs: [quality, lint-types, secrets-scan, dependency-audit, package, docker]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     env:
       QUALITY_RESULT: ${{ needs.quality.result }}
+      LINT_TYPES_RESULT: ${{ needs.lint-types.result }}
+      SECRETS_SCAN_RESULT: ${{ needs.secrets-scan.result }}
       DEPENDENCY_AUDIT_RESULT: ${{ needs.dependency-audit.result }}
       PACKAGE_RESULT: ${{ needs.package.result }}
       DOCKER_RESULT: ${{ needs.docker.result }}
@@ -104,7 +194,7 @@ jobs:
       - name: Enforce every required check
         shell: bash
         run: |
-          for check in QUALITY_RESULT DEPENDENCY_AUDIT_RESULT PACKAGE_RESULT DOCKER_RESULT; do
+          for check in QUALITY_RESULT LINT_TYPES_RESULT SECRETS_SCAN_RESULT DEPENDENCY_AUDIT_RESULT PACKAGE_RESULT DOCKER_RESULT; do
             value="${!check}"
             if [ "$value" != "success" ]; then
               echo "$check did not pass: $value" >&2

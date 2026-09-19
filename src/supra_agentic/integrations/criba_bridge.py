@@ -28,10 +28,18 @@ def call_criba(
 ) -> dict[str, Any]:
     """Invoke CRIBA activate as a subprocess."""
     cmd = [
-        "uv", "run", "python", "-m", "criba", "activate",
-        "--query", query,
-        "--mode", mode,
-        "--supporting-methods", str(supporting_methods),
+        "uv",
+        "run",
+        "python",
+        "-m",
+        "criba",
+        "activate",
+        "--query",
+        query,
+        "--mode",
+        mode,
+        "--supporting-methods",
+        str(supporting_methods),
         "--json",
     ]
     if database:
@@ -65,10 +73,18 @@ def call_blackforge(
 ) -> dict[str, Any]:
     """Invoke BLACKFORGE headless pipeline as a subprocess."""
     cmd = [
-        "uv", "run", "python", "-m", "criba", "blackforge",
-        "--query", query,
-        "--seed", str(seed),
-        "--profile", profile,
+        "uv",
+        "run",
+        "python",
+        "-m",
+        "criba",
+        "blackforge",
+        "--query",
+        query,
+        "--seed",
+        str(seed),
+        "--profile",
+        profile,
     ]
 
     try:
@@ -85,7 +101,10 @@ def call_blackforge(
             # blackforge no tiene --json, parsear stdout manualmente
             return {"raw_output": result.stdout, "success": True}
         else:
-            return {"error": f"BLACKFORGE exit code {result.returncode}", "stderr": result.stderr[:500]}
+            return {
+                "error": f"BLACKFORGE exit code {result.returncode}",
+                "stderr": result.stderr[:500],
+            }
     except subprocess.TimeoutExpired:
         return {"error": "BLACKFORGE timeout after 60s"}
     except Exception as e:

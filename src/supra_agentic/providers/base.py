@@ -1,4 +1,5 @@
 """Provider contracts shared by every SUPRA model backend."""
+
 from __future__ import annotations
 
 import asyncio

@@ -36,3 +36,35 @@ where = ["src"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+# SUP-13 (D7.1/D7.2): empezar conservador. E9 (errores de runtime) + F
+# (pyflakes) es el set que ya pasa en el codigo no protegido. Los modulos
+# protegidos (agent/runner/service/state/tools/mcp_handler) quedan EXCLUIDOS
+# del check y del format hasta que moli autorice limpiarlos (auditoria Fase 1,
+# items B-2..B-5/B-7); ampliar select y quitar el exclude solo con autorizacion.
+extend-exclude = [
+    "src/supra_agentic/agent.py",
+    "src/supra_agentic/runner.py",
+    "src/supra_agentic/service.py",
+    "src/supra_agentic/state.py",
+    "src/supra_agentic/tools.py",
+    "src/supra_agentic/mcp_handler.py",
+]
+
+[tool.ruff.lint]
+select = ["E9", "F"]
+
+[tool.mypy]
+python_version = "3.11"
+# SUP-13 (D7.1): no estricto a proposito; el repo no tiene cobertura de tipos
+# completa. Subir la rigurosidad por pasos, nunca de golpe.
+plugins = []
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+check_untyped_defs = false
+no_strict_optional = true
+ignore_missing_imports = true

@@ -1,11 +1,19 @@
 """Provider registry for SUPRA."""
+
 from __future__ import annotations
 
 import os
 from collections.abc import Callable
 from typing import Any
 
-from .base import AgentProvider, ProviderError, ProviderResponse, ProviderUnavailable, ToolInput, ToolSpec
+from .base import (
+    AgentProvider,
+    ProviderError,
+    ProviderResponse,
+    ProviderUnavailable,
+    ToolInput,
+    ToolSpec,
+)
 from .hermes import HermesProvider
 from .nebius import get_nebius_provider, is_nebius_available, nebius_metadata
 from .openai_compatible import OpenAICompatibleProvider

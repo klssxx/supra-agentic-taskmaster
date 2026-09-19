@@ -1,4 +1,5 @@
 """Hermes/Nous provider backed by the local Hermes OpenAI-compatible proxy."""
+
 from __future__ import annotations
 
 import os

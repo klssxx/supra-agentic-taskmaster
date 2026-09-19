@@ -1,8 +1,9 @@
 """Tests for Nebius Token Factory provider."""
+
 from __future__ import annotations
 
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -64,7 +65,7 @@ class TestNebiusProvider:
 
     def test_provider_registry_includes_nebius(self):
         """Nebius is in the provider registry."""
-        from supra_agentic.providers import _PROVIDER_FACTORIES, get_provider
+        from supra_agentic.providers import _PROVIDER_FACTORIES
 
         assert "nebius" in _PROVIDER_FACTORIES
         assert "nebius-token-factory" in _PROVIDER_FACTORIES
@@ -72,6 +73,7 @@ class TestNebiusProvider:
     def test_get_provider_nebius(self):
         """get_provider('nebius') returns configured provider."""
         from supra_agentic.providers import get_provider
+
         env = {"NEBIUS_API_KEY": "test-key"}
         with patch.dict(os.environ, env, clear=True):
             provider = get_provider("nebius")

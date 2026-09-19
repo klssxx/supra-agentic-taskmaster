@@ -1,8 +1,8 @@
 """Dossier and Technical Export Generator with Embedded SVG Architecture."""
+
 from __future__ import annotations
 
 import html
-import json
 from typing import Any
 
 from .models import ProjectPosture
@@ -16,8 +16,9 @@ def _esc(value: Any) -> str:
 
 def generate_svg_architecture(posture: ProjectPosture) -> str:
     """Generate an inline SVG diagram representing the project's autonomous DAG."""
-    stage = posture.stage.value
-    cand_name = posture.selected_candidate.pathway_name if posture.selected_candidate else "Standard"
+    cand_name = (
+        posture.selected_candidate.pathway_name if posture.selected_candidate else "Standard"
+    )
     verdict = posture.verification.verdict if posture.verification else "NOT_EVALUATED"
 
     return f"""<svg width="720" height="200" viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg">
@@ -65,7 +66,6 @@ def export_full_html_dossier(posture: ProjectPosture) -> str:
     svg = generate_svg_architecture(posture)
     decomp = posture.decomposition
     cand = posture.selected_candidate
-    ver = posture.verification
     out = posture.final_output
 
     return f"""<!DOCTYPE html>
@@ -89,7 +89,7 @@ def export_full_html_dossier(posture: ProjectPosture) -> str:
   <div class="card">
     <h3>Executive Objective</h3>
     <p>{_esc(posture.objective)}</p>
-    <p><strong>Domain:</strong> <span class="mono">{_esc(decomp.domain if decomp else 'general')}</span></p>
+    <p><strong>Domain:</strong> <span class="mono">{_esc(decomp.domain if decomp else "general")}</span></p>
   </div>
 
   <h2>Autonomous Architectural Graph</h2>
@@ -102,17 +102,17 @@ def export_full_html_dossier(posture: ProjectPosture) -> str:
 
   <h2>Selected Strategy Candidate</h2>
   <div class="card">
-    <h3>{_esc(cand.pathway_name if cand else 'N/A')} <span class="badge">{_esc(cand.paradigm_type if cand else 'N/A')}</span></h3>
-    <p><strong>Hypothesis:</strong> {_esc(cand.hypothesis if cand else 'N/A')}</p>
+    <h3>{_esc(cand.pathway_name if cand else "N/A")} <span class="badge">{_esc(cand.paradigm_type if cand else "N/A")}</span></h3>
+    <p><strong>Hypothesis:</strong> {_esc(cand.hypothesis if cand else "N/A")}</p>
     <p><strong>Feasibility:</strong> {cand.feasibility_score if cand else 0.0:.2f} | <strong>Divergence:</strong> {cand.divergence_score if cand else 0.0:.2f}</p>
   </div>
 
   <h2>Empirical Falsification Hypothesis (H0)</h2>
   <div class="card" style="background: #fffbeb; border-color: #fef3c7;">
-    <p><strong>Null Hypothesis:</strong> {_esc((out or {}).get('null_hypothesis_h0') or 'H0 not declared (no verification recorded)')}</p>
+    <p><strong>Null Hypothesis:</strong> {_esc((out or {}).get("null_hypothesis_h0") or "H0 not declared (no verification recorded)")}</p>
   </div>
 
   <h2>Cryptographic Integrity Signature</h2>
-  <p><strong>SHA-256 Audit Hash:</strong> <span class="mono">{_esc(out.get('audit_sha256', 'N/A') if out else 'N/A')}</span></p>
+  <p><strong>SHA-256 Audit Hash:</strong> <span class="mono">{_esc(out.get("audit_sha256", "N/A") if out else "N/A")}</span></p>
 </body>
 </html>"""

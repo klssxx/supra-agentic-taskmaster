@@ -1,7 +1,8 @@
 """Tests for provider-neutral SUPRA tools."""
+
 import tempfile
 from supra_agentic.models import TaskmasterStage
-from supra_agentic.state import ProjectStateManager, state_manager
+from supra_agentic.state import state_manager
 from supra_agentic.tools import (
     SUPRA_TOOLS,
     decompose_objective,
@@ -27,7 +28,9 @@ def test_full_tool_cycle_execution():
         # Override state manager storage for isolation
         state_manager.storage_dir = type(state_manager.storage_dir)(tmpdir)
 
-        p = state_manager.create_project(objective="Automate multi-region database failover with zero data loss")
+        p = state_manager.create_project(
+            objective="Automate multi-region database failover with zero data loss"
+        )
         pid = p.project_id
 
         # 1. Decompose
@@ -63,7 +66,11 @@ def test_full_tool_cycle_execution():
         assert r4["sandbox_result"]["passed"] is True
 
         # 5. Checkpoint / Final Deliverable
-        r5 = record_checkpoint(pid, deliverable_title="Multi-Region Zero-Loss Failover Plan", summary="Autonomous plan synthesized and verified.")
+        r5 = record_checkpoint(
+            pid,
+            deliverable_title="Multi-Region Zero-Loss Failover Plan",
+            summary="Autonomous plan synthesized and verified.",
+        )
         assert r5["status"] == "success"
         assert r5["stage"] == TaskmasterStage.COMPLETED.value
         assert "audit_sha256" in r5["final_deliverable"]

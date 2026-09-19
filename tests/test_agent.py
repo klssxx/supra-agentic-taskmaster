@@ -1,4 +1,5 @@
 """Tests for the provider-neutral Taskmaster facade and runner."""
+
 import tempfile
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -8,7 +9,7 @@ from supra_agentic.agent import TaskmasterAgent
 from supra_agentic.providers import AgentProvider, ProviderResponse, ToolInput
 from supra_agentic.runner import TaskmasterRunner
 from supra_agentic.state import state_manager
-from supra_agentic.tools import execute_sandbox_action, synthesize_strategy
+from supra_agentic.tools import synthesize_strategy
 
 
 class RecordingProvider(AgentProvider):
@@ -92,11 +93,14 @@ def test_runner_self_correction_feedback():
 
         # Decompose first
         from supra_agentic.tools import decompose_objective
+
         decompose_objective(pid, objective=p.objective)
 
         # Synthesize with error feedback
         feedback = "AssertionError: Database connection failed during burst mode"
-        r = synthesize_strategy(pid, pathways_count=3, allow_disruptive=True, error_feedback=feedback)
+        r = synthesize_strategy(
+            pid, pathways_count=3, allow_disruptive=True, error_feedback=feedback
+        )
         assert r["status"] == "success"
         assert r["self_correction_applied"] is True
         assert r["selected_candidate"]["paradigm_type"] == "DISRUPTIVE"

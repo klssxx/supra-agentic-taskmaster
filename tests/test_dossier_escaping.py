@@ -3,6 +3,7 @@
 Covers SUP-02 (stored XSS in the HTML dossier) and the presentation half of
 SUP-04 (a missing verification must never be rendered as PASS).
 """
+
 from __future__ import annotations
 
 import html
@@ -45,7 +46,7 @@ def test_invariants_and_candidate_are_escaped() -> None:
         invariants=[f"<img src=x onerror=alert(1)> {XSS}"],
     )
     candidate = StrategyCandidate(
-        pathway_name=f"</text><script>alert(2)</script>",
+        pathway_name="</text><script>alert(2)</script>",
         paradigm_type="<b>ORTHOGONAL</b>",
         hypothesis=f"hypothesis {XSS}",
         is_selected=True,

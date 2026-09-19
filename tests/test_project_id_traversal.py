@@ -5,6 +5,7 @@ unvalidated, so ``"../../escaped"`` wrote a JSON file outside ``data/projects``.
 These tests pin the guard at both boundaries (state manager and HTTP API) and
 prove that valid ids and existing on-disk state keep working unchanged.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

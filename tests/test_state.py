@@ -1,8 +1,7 @@
 """Tests for SUPRA Project State Manager and Models."""
+
 import tempfile
-from pathlib import Path
 from supra_agentic.models import (
-    CheckpointRecord,
     SandboxExecutionResult,
     StrategyCandidate,
     StructuredDecomposition,

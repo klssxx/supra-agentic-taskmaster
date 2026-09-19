@@ -8,6 +8,7 @@ Environment:
     NEBIUS_BASE_URL — override base URL (optional)
     NEBIUS_MODEL — override model (optional)
 """
+
 from __future__ import annotations
 
 import os
@@ -42,7 +43,7 @@ def is_nebius_available() -> bool:
     if not os.environ.get("NEBIUS_API_KEY", "").strip():
         return False
     try:
-        provider = get_nebius_provider()
+        get_nebius_provider()
         # Quick health check: list models
         return True
     except Exception:

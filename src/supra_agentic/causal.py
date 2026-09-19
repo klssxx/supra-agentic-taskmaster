@@ -73,7 +73,7 @@ class CausalGraph:
 
     def find_backdoor_paths(self, treatment: str, outcome: str) -> list[list[str]]:
         """Find backdoor paths between treatment and outcome.
-        
+
         A backdoor path is any path from treatment to outcome that starts with
         an arrow pointing TO the treatment (i.e., through confounders).
         """
@@ -150,7 +150,9 @@ class CausalGraph:
             "n_nodes": len(self.nodes),
             "n_edges": len(self.edges),
             "nodes": [{"name": n.name, "type": n.node_type} for n in self.nodes.values()],
-            "edges": [{"source": e.source, "target": e.target, "rel": e.relationship} for e in self.edges],
+            "edges": [
+                {"source": e.source, "target": e.target, "rel": e.relationship} for e in self.edges
+            ],
         }
 
 
@@ -162,7 +164,7 @@ class CausalVerifier:
 
     def check_candidate(self, candidate: Any) -> dict[str, Any]:
         """Check if a strategy candidate is causally consistent."""
-        hypothesis = candidate.hypothesis if hasattr(candidate, 'hypothesis') else str(candidate)
+        hypothesis = candidate.hypothesis if hasattr(candidate, "hypothesis") else str(candidate)
 
         # Extract potential treatment and outcome from hypothesis
         treatment = self._extract_treatment(hypothesis)
