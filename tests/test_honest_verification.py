@@ -9,7 +9,6 @@ evidencia ejecutada, y NOT_EVALUATED cuando no hay prueba que ejecutar.
 
 from __future__ import annotations
 
-import tempfile
 
 from supra_agentic.state import state_manager
 from supra_agentic.tools import (
@@ -22,8 +21,7 @@ from supra_agentic.tools import (
 from supra_agentic.models import StrategyCandidate
 
 
-def _project_with_candidate(tmpdir: str) -> str:
-    state_manager.storage_dir = type(state_manager.storage_dir)(tmpdir)
+def _project_with_candidate() -> str:
     p = state_manager.create_project(objective="Pipeline de telemetría auto-recuperable")
     pid = p.project_id
     decompose_objective(pid, objective=p.objective, domain="data_pipeline")
@@ -34,13 +32,12 @@ def _project_with_candidate(tmpdir: str) -> str:
 def test_verdict_deriva_de_evidencia_no_de_puntuaciones_prefijadas():
     """Dos candidatas con distintas feasibility NO fabrican la misma confianza:
     la confianza ahora es la fracción de invariantes con evidencia PASS."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        pid = _project_with_candidate(tmpdir)
-        report = verify_solution(pid)["report"]
-        # la confianza es una fracción de invariantes con PASS, en [0,1]
-        assert 0.0 <= report["confidence_score"] <= 1.0
-        # y NO es el valor prefijado 0.79*0.7+0.88*0.3+0.15 del hallazgo
-        assert abs(report["confidence_score"] - 0.967) > 1e-6
+    pid = _project_with_candidate()
+    report = verify_solution(pid)["report"]
+    # la confianza es una fracción de invariantes con PASS, en [0,1]
+    assert 0.0 <= report["confidence_score"] <= 1.0
+    # y NO es el valor prefijado 0.79*0.7+0.88*0.3+0.15 del hallazgo
+    assert abs(report["confidence_score"] - 0.967) > 1e-6
 
 
 def test_not_evaluated_cuando_invariante_sin_prueba():
