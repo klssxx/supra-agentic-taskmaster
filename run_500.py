@@ -1,4 +1,5 @@
 """Run a batch of prompts through the configured SUPRA provider."""
+
 from __future__ import annotations
 
 import argparse
