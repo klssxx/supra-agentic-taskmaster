@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import tempfile
 import threading
 import time
@@ -22,6 +23,10 @@ from .models import (
 
 logger = logging.getLogger("supra_agentic.state")
 
+# El id de proyecto es una CLAVE DE FICHERO: se restringe al juego de caracteres
+# que no puede escapar del directorio de estado (ni "..", ni separadores, ni NUL).
+PROJECT_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,64}")
+
 
 class ProjectStateManager:
     """Manages project lifecycles with thread-safe locking and state persistence."""
@@ -32,10 +37,33 @@ class ProjectStateManager:
         self.storage_dir = Path(storage_dir) if storage_dir else Path("data/projects")
         self.storage_dir.mkdir(parents=True, exist_ok=True)
 
+    def _validate_project_id(self, project_id: Any) -> str:
+        """Validate a project id before it is ever used as a file name.
+
+        Raises ValueError for anything that is not ``[A-Za-z0-9_-]{1,64}``: an id
+        is a file key, so a malformed one must never reach the filesystem.
+        """
+        if not isinstance(project_id, str) or PROJECT_ID_RE.fullmatch(project_id) is None:
+            raise ValueError(
+                f"project_id invalido: {project_id!r} (se espera [A-Za-z0-9_-]{{1,64}})"
+            )
+        return project_id
+
+    def _project_file(self, project_id: str) -> Path:
+        """Return the on-disk path for a project, inside storage_dir by construction."""
+        candidate = (self.storage_dir / f"{self._validate_project_id(project_id)}.json").resolve()
+        if candidate.parent != self.storage_dir.resolve():
+            raise ValueError(f"project_id fuera del almacen de estado: {project_id!r}")
+        return candidate
+
     def create_project(self, objective: str, project_id: str | None = None) -> ProjectPosture:
         """Create a new project session in RECEIVED stage."""
         with self._lock:
-            pid = project_id or f"proj-{uuid.uuid4().hex[:8]}"
+            pid = (
+                self._validate_project_id(project_id)
+                if project_id
+                else f"proj-{uuid.uuid4().hex[:8]}"
+            )
             now = time.time()
             posture = ProjectPosture(
                 project_id=pid,
@@ -62,7 +90,11 @@ class ProjectStateManager:
             if project_id in self._projects:
                 return self._projects[project_id]
             # Try to load from disk
-            p_file = self.storage_dir / f"{project_id}.json"
+            try:
+                p_file = self._project_file(project_id)
+            except ValueError:
+                logger.warning("Rejected malformed project id: %r", project_id)
+                return None
             if p_file.exists():
                 try:
                     data = json.loads(p_file.read_text(encoding="utf-8"))
@@ -209,7 +241,7 @@ class ProjectStateManager:
         p = self._projects.get(project_id)
         if p:
             try:
-                p_file = self.storage_dir / f"{project_id}.json"
+                p_file = self._project_file(project_id)
                 with tempfile.NamedTemporaryFile(
                     mode="w", dir=self.storage_dir, suffix=".tmp", delete=False
                 ) as tmp:

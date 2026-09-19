@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .dossier import export_full_html_dossier
 from .mcp_handler import handle_mcp_jsonrpc_request
@@ -19,7 +19,7 @@ from .models import ProjectPosture
 from .providers import ProviderError, get_provider, provider_names
 from .runner import TaskmasterRunner
 from .runner import taskmaster_runner
-from .state import state_manager
+from .state import PROJECT_ID_RE, state_manager
 
 logger = logging.getLogger("supra_agentic.service")
 
@@ -52,6 +52,16 @@ class CreateProjectRequest(BaseModel):
     provider: str | None = Field(None, max_length=64, description="Provider name, or SUPRA_PROVIDER when omitted.")
     model: str | None = Field(None, max_length=200, description="Provider model ID; auto-discovered when omitted.")
     use_model: bool = Field(False, description="Add optional model assistance without replacing deterministic gates.")
+
+    @field_validator("project_id")
+    @classmethod
+    def _reject_unsafe_project_id(cls, value: str | None) -> str | None:
+        """Un id de proyecto es una clave de fichero: no puede escapar del almacen de estado."""
+        if value is None:
+            return None
+        if PROJECT_ID_RE.fullmatch(value) is None:
+            raise ValueError("project_id debe cumplir [A-Za-z0-9_-]{1,64}")
+        return value
 
 
 class GenerateRequest(BaseModel):
