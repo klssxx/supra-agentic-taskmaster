@@ -147,15 +147,15 @@ function renderProjectPosture(posture) {
         <div class="result-section">
             <h4>03. System Verification & Micro-Sandbox Telemetry</h4>
             <div style="font-size: 0.85rem;">
-                <strong>Verdict:</strong> <span style="color: #10B981; font-weight: 700;">${escapeHtml(ver ? ver.verdict : 'PASS')}</span> 
-                (Confidence: ${ver ? (ver.confidence_score * 100).toFixed(1) : 95}%)
+                <strong>Verdict:</strong> <span style="color: #10B981; font-weight: 700;">${escapeHtml(ver ? ver.verdict : 'NOT_EVALUATED')}</span> 
+                (Confidence: ${ver ? (ver.confidence_score * 100).toFixed(1) : 'n/a'}%)
             </div>
             <div style="font-size: 0.8rem; color: #94A3B8; margin-top: 0.25rem;">
-                ${escapeHtml(ver ? ver.rationale : 'All system invariants rigorously satisfied.')}
+                ${escapeHtml(ver ? ver.rationale : 'No verification recorded.')}
             </div>
             ${sb ? `
                 <div style="background: #000; padding: 0.5rem; border-radius: 4px; font-family: monospace; font-size: 0.75rem; color: #00FFCC; margin-top: 0.5rem;">
-                    [SANDBOX PASS] ${escapeHtml(sb.output_log)} (${sb.duration_ms}ms)
+                    [SANDBOX ${sb.passed ? 'PASS' : 'FAIL'}] ${escapeHtml(sb.output_log)} (${sb.duration_ms}ms)
                 </div>
             ` : ''}
         </div>
@@ -163,7 +163,7 @@ function renderProjectPosture(posture) {
         <div class="result-section">
             <h4>04. Empirical Falsification Hypothesis (H0)</h4>
             <div style="font-size: 0.8rem; color: #F59E0B; background: rgba(245, 158, 11, 0.08); padding: 0.6rem; border-radius: 6px; border: 1px solid rgba(245, 158, 11, 0.2);">
-                <strong>Falsifiable Null Hypothesis:</strong> ${escapeHtml(out && out.null_hypothesis_h0 ? out.null_hypothesis_h0 : 'H0 verified against baseline.')}
+                <strong>Falsifiable Null Hypothesis:</strong> ${escapeHtml(out && out.null_hypothesis_h0 ? out.null_hypothesis_h0 : 'H0 not declared.')}
             </div>
         </div>
 
@@ -182,13 +182,13 @@ function renderProjectPosture(posture) {
     // Show Export Bar
     const exportBar = document.getElementById('export-bar');
     exportBar.style.display = 'flex';
-    document.getElementById('final-audit-hash').innerText = out && out.audit_sha256 ? out.audit_sha256 : 'VERIFIED';
+    document.getElementById('final-audit-hash').innerText = out && out.audit_sha256 ? out.audit_sha256 : 'N/A';
 }
 
 async function handleExportDossier() {
     if (!currentProjectId) return;
     try {
-        const res = await fetch(`/api/v1/export/dossier/${currentProjectId}`);
+        const res = await fetch(`/api/v1/export/dossier/${encodeURIComponent(currentProjectId)}`);
         const data = await res.json();
         
         const blob = new Blob([data.markdown_dossier], { type: 'text/markdown' });
@@ -204,7 +204,7 @@ async function handleExportDossier() {
 
 async function handleExportHtmlDossier() {
     if (!currentProjectId) return;
-    window.open(`/api/v1/export/dossier/html/${currentProjectId}`, '_blank');
+    window.open(`/api/v1/export/dossier/html/${encodeURIComponent(currentProjectId)}`, '_blank');
 }
 
 async function loadRecentProjects() {
@@ -214,12 +214,19 @@ async function loadRecentProjects() {
         const list = document.getElementById('recent-list');
         if (!data.projects || data.projects.length === 0) return;
         
-        list.innerHTML = data.projects.map(p => `
-            <div class="recent-item" onclick="loadProjectById('${p.project_id}')">
-                <span>${p.objective.substring(0, 35)}...</span>
-                <span class="mono-text" style="color: #00FFCC;">${p.stage}</span>
-            </div>
-        `).join('');
+        list.replaceChildren(...data.projects.map(p => {
+            const item = document.createElement('div');
+            item.className = 'recent-item';
+            const label = document.createElement('span');
+            label.textContent = `${p.objective.substring(0, 35)}...`;
+            const stage = document.createElement('span');
+            stage.className = 'mono-text';
+            stage.style.color = '#00FFCC';
+            stage.textContent = p.stage;
+            item.append(label, stage);
+            item.addEventListener('click', () => loadProjectById(p.project_id));
+            return item;
+        }));
     } catch (e) {
         // Ignore
     }
@@ -227,7 +234,7 @@ async function loadRecentProjects() {
 
 async function loadProjectById(id) {
     try {
-        const res = await fetch(`/api/v1/projects/${id}`);
+        const res = await fetch(`/api/v1/projects/${encodeURIComponent(id)}`);
         const data = await res.json();
         currentProjectId = id;
         document.getElementById('objective-input').value = data.posture.objective;

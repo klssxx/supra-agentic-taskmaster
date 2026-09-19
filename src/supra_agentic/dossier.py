@@ -1,17 +1,24 @@
 """Dossier and Technical Export Generator with Embedded SVG Architecture."""
 from __future__ import annotations
 
+import html
 import json
 from typing import Any
 
 from .models import ProjectPosture
 
 
+def _esc(value: Any) -> str:
+    """Escape a value for HTML text/attribute context (stored-XSS guard)."""
+
+    return html.escape("" if value is None else str(value), quote=True)
+
+
 def generate_svg_architecture(posture: ProjectPosture) -> str:
     """Generate an inline SVG diagram representing the project's autonomous DAG."""
     stage = posture.stage.value
     cand_name = posture.selected_candidate.pathway_name if posture.selected_candidate else "Standard"
-    verdict = posture.verification.verdict if posture.verification else "PASS"
+    verdict = posture.verification.verdict if posture.verification else "NOT_EVALUATED"
 
     return f"""<svg width="720" height="200" viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg">
   <defs>
@@ -40,12 +47,12 @@ def generate_svg_architecture(posture: ProjectPosture) -> str:
   <!-- Node 2: Strategy -->
   <rect x="240" y="60" width="120" height="80" rx="6" fill="#131822" stroke="#4E75FF" stroke-width="1.5"/>
   <text x="300" y="95" fill="#F0F4F8" font-family="sans-serif" font-size="11" font-weight="bold" text-anchor="middle">02. STRATEGY</text>
-  <text x="300" y="115" fill="#00FFCC" font-family="monospace" font-size="9" text-anchor="middle">{cand_name[:14]}...</text>
+  <text x="300" y="115" fill="#00FFCC" font-family="monospace" font-size="9" text-anchor="middle">{_esc(cand_name[:14])}...</text>
 
   <!-- Node 3: Micro-Sandbox -->
   <rect x="460" y="60" width="120" height="80" rx="6" fill="#131822" stroke="#00FFCC" stroke-width="1.5"/>
   <text x="520" y="95" fill="#F0F4F8" font-family="sans-serif" font-size="11" font-weight="bold" text-anchor="middle">03. SANDBOX</text>
-  <text x="520" y="115" fill="#10B981" font-family="monospace" font-size="9" text-anchor="middle">AST Fuzz ({verdict})</text>
+  <text x="520" y="115" fill="#10B981" font-family="monospace" font-size="9" text-anchor="middle">AST Fuzz ({_esc(verdict)})</text>
 
   <!-- Node 4: Final Deliverable -->
   <circle cx="660" cy="100" r="28" fill="url(#tealGrad)"/>
@@ -65,7 +72,7 @@ def export_full_html_dossier(posture: ProjectPosture) -> str:
 <html>
 <head>
 <meta charset="utf-8">
-<title>SUPRA Technical Dossier — {posture.project_id}</title>
+<title>SUPRA Technical Dossier — {_esc(posture.project_id)}</title>
 <style>
   body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; max-width: 860px; margin: 40px auto; padding: 0 20px; color: #1e293b; }}
   h1, h2, h3 {{ color: #0f172a; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; }}
@@ -77,12 +84,12 @@ def export_full_html_dossier(posture: ProjectPosture) -> str:
 </head>
 <body>
   <h1>SUPRA Autonomous Taskmaster Dossier</h1>
-  <p><strong>Project ID:</strong> <span class="mono">{posture.project_id}</span> | <strong>Stage:</strong> <span class="badge">{posture.stage.value}</span></p>
+  <p><strong>Project ID:</strong> <span class="mono">{_esc(posture.project_id)}</span> | <strong>Stage:</strong> <span class="badge">{_esc(posture.stage.value)}</span></p>
   
   <div class="card">
     <h3>Executive Objective</h3>
-    <p>{posture.objective}</p>
-    <p><strong>Domain:</strong> <span class="mono">{decomp.domain if decomp else 'general'}</span></p>
+    <p>{_esc(posture.objective)}</p>
+    <p><strong>Domain:</strong> <span class="mono">{_esc(decomp.domain if decomp else 'general')}</span></p>
   </div>
 
   <h2>Autonomous Architectural Graph</h2>
@@ -90,22 +97,22 @@ def export_full_html_dossier(posture: ProjectPosture) -> str:
 
   <h2>System Invariants & Boundary Constraints</h2>
   <ul>
-    {"".join(f"<li><strong>[INVARIANT]</strong> {inv}</li>" for inv in (decomp.invariants if decomp else []))}
+    {"".join(f"<li><strong>[INVARIANT]</strong> {_esc(inv)}</li>" for inv in (decomp.invariants if decomp else []))}
   </ul>
 
   <h2>Selected Strategy Candidate</h2>
   <div class="card">
-    <h3>{cand.pathway_name if cand else 'N/A'} <span class="badge">{cand.paradigm_type if cand else 'N/A'}</span></h3>
-    <p><strong>Hypothesis:</strong> {cand.hypothesis if cand else 'N/A'}</p>
+    <h3>{_esc(cand.pathway_name if cand else 'N/A')} <span class="badge">{_esc(cand.paradigm_type if cand else 'N/A')}</span></h3>
+    <p><strong>Hypothesis:</strong> {_esc(cand.hypothesis if cand else 'N/A')}</p>
     <p><strong>Feasibility:</strong> {cand.feasibility_score if cand else 0.0:.2f} | <strong>Divergence:</strong> {cand.divergence_score if cand else 0.0:.2f}</p>
   </div>
 
   <h2>Empirical Falsification Hypothesis (H0)</h2>
   <div class="card" style="background: #fffbeb; border-color: #fef3c7;">
-    <p><strong>Null Hypothesis:</strong> {out.get('null_hypothesis_h0', 'H0 verified') if out else 'H0 verified'}</p>
+    <p><strong>Null Hypothesis:</strong> {_esc((out or {}).get('null_hypothesis_h0') or 'H0 not declared (no verification recorded)')}</p>
   </div>
 
   <h2>Cryptographic Integrity Signature</h2>
-  <p><strong>SHA-256 Audit Hash:</strong> <span class="mono">{out.get('audit_sha256', 'N/A') if out else 'N/A'}</span></p>
+  <p><strong>SHA-256 Audit Hash:</strong> <span class="mono">{_esc(out.get('audit_sha256', 'N/A') if out else 'N/A')}</span></p>
 </body>
 </html>"""
