@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -20,6 +21,13 @@ from .base import (
 
 
 _AUTO_MODELS = {"", "auto", "default"}
+
+# SUP-12: cota de tamano de respuesta (8 MiB) y log del motivo antes de
+# devolver [] en list_models, para que una config mala no se lea como
+# "sin modelos".
+_MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+
+logger = logging.getLogger(__name__)
 
 
 def _env_float(name: str, default: float) -> float:
@@ -110,13 +118,17 @@ class OpenAICompatibleProvider(AgentProvider):
 
     def metadata(self) -> dict[str, Any]:
         """Expose configuration that is safe to return from a health endpoint."""
-        return {
+        meta = {
             "name": self.name,
-            "base_url": self.base_url,
             "model": self.default_model or "auto",
             "configured": True,
             "protocol": "openai-compatible",
         }
+        # SUP-12: la base_url se publica SOLO con env explicito
+        # (SUPRA_EXPOSE_BASE_URL=1); por defecto se omite.
+        if os.environ.get("SUPRA_EXPOSE_BASE_URL", "").strip() == "1":
+            meta["base_url"] = self.base_url
+        return meta
 
     def _headers(self) -> dict[str, str]:
         headers = {"accept": "application/json", "content-type": "application/json"}
@@ -139,13 +151,20 @@ class OpenAICompatibleProvider(AgentProvider):
         try:
             with self._client() as client:
                 response = client.get("/models")
-        except httpx.HTTPError:
+        except httpx.HTTPError as exc:
+            logger.warning("%s: GET /models failed (%s); returning no models", self.name, exc)
             return []
         if response.status_code != 200:
+            logger.warning(
+                "%s: GET /models returned HTTP %s; returning no models",
+                self.name,
+                response.status_code,
+            )
             return []
         try:
             payload = response.json()
         except ValueError:
+            logger.warning("%s: GET /models returned invalid JSON; returning no models", self.name)
             return []
         raw_models = payload.get("data", []) if isinstance(payload, Mapping) else []
         models = [
@@ -194,6 +213,10 @@ class OpenAICompatibleProvider(AgentProvider):
         if response.status_code >= 400:
             raise ProviderError(
                 f"{self.name} provider returned HTTP {response.status_code}; check endpoint and credentials"
+            )
+        if len(response.content) > _MAX_RESPONSE_BYTES:
+            raise ProviderError(
+                f"{self.name} provider response exceeds {_MAX_RESPONSE_BYTES} bytes (SUP-12 limit)"
             )
         try:
             body = response.json()

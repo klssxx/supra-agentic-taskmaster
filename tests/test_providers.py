@@ -163,3 +163,48 @@ def test_hermes_auto_model_prefers_free_catalog_entry() -> None:
     response = provider.generate([{"role": "user", "content": "hello"}])
 
     assert response.model == "local/model:free"
+
+
+def test_metadata_hides_base_url_unless_explicit(monkeypatch) -> None:
+    """SUP-12: base_url no se publica en /health salvo con SUPRA_EXPOSE_BASE_URL=1."""
+    monkeypatch.delenv("SUPRA_EXPOSE_BASE_URL", raising=False)
+    provider = OpenAICompatibleProvider(
+        base_url="http://internal.example.test/v1",
+    )
+    meta = provider.metadata()
+    assert meta["name"] == "openai-compatible"
+    assert meta["protocol"] == "openai-compatible"
+    assert meta["configured"] is True
+    assert "base_url" not in meta  # privacidad por defecto
+
+    monkeypatch.setenv("SUPRA_EXPOSE_BASE_URL", "1")
+    meta = provider.metadata()
+    assert meta["base_url"] == "http://internal.example.test/v1"
+
+
+def test_list_models_logs_reason_before_empty(monkeypatch, caplog) -> None:
+    """SUP-12: config mala ya no luce como "sin modelos"; deja rastro."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, text="upstream down")
+
+    provider = OpenAICompatibleProvider(
+        base_url="http://provider.test/v1",
+        transport=httpx.MockTransport(handler),
+    )
+    assert provider.list_models() == []
+    assert any("returned HTTP 503" in r.message for r in caplog.records)
+
+
+def test_generate_rejects_oversized_response() -> None:
+    """SUP-12: respuesta por encima de 8 MiB -> ProviderError, no OOM."""
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"x" * (8 * 1024 * 1024 + 1))
+
+    provider = OpenAICompatibleProvider(
+        base_url="http://provider.test/v1",
+        transport=httpx.MockTransport(handler),
+    )
+    with pytest.raises(ProviderError, match="exceeds"):
+        provider.generate([{"role": "user", "content": "hello"}], model="model")
