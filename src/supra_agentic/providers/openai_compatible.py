@@ -1,6 +1,7 @@
 """OpenAI-compatible HTTP provider used by local and cloud backends."""
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -10,8 +11,12 @@ import httpx
 
 from .base import AgentProvider, ProviderError, ProviderResponse, ProviderUnavailable, ToolInput, ToolSpec
 
+logger = logging.getLogger("supra_agentic.providers.openai_compatible")
 
 _AUTO_MODELS = {"", "auto", "default"}
+
+# Max response size: 8 MiB
+_MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 
 
 def _env_float(name: str, default: float) -> float:
@@ -93,6 +98,8 @@ class OpenAICompatibleProvider(AgentProvider):
         self._transport = transport
         self._provider_name = provider_name
         self._cached_models: list[str] | None = None
+        # Only publish base_url in metadata/health if explicitly enabled
+        self._publish_base_url = os.getenv("SUPRA_PUBLISH_BASE_URL", "0").strip().lower() in {"1", "true", "yes", "on"}
 
     @property
     def name(self) -> str:
@@ -100,13 +107,16 @@ class OpenAICompatibleProvider(AgentProvider):
 
     def metadata(self) -> dict[str, Any]:
         """Expose configuration that is safe to return from a health endpoint."""
-        return {
+        meta: dict[str, Any] = {
             "name": self.name,
-            "base_url": self.base_url,
             "model": self.default_model or "auto",
             "configured": True,
             "protocol": "openai-compatible",
         }
+        # Only include base_url if explicitly enabled (security: don't leak endpoint in health)
+        if self._publish_base_url:
+            meta["base_url"] = self.base_url
+        return meta
 
     def _headers(self) -> dict[str, str]:
         headers = {"accept": "application/json", "content-type": "application/json"}
@@ -123,19 +133,25 @@ class OpenAICompatibleProvider(AgentProvider):
         )
 
     def list_models(self) -> list[str]:
-        """Discover models without failing generation when discovery is unsupported."""
+        """Discover models without failing generation when discovery is unsupported.
+
+        On any error, logs the reason and returns empty list (never raises).
+        """
         if self._cached_models is not None:
             return list(self._cached_models)
         try:
             with self._client() as client:
                 response = client.get("/models")
-        except httpx.HTTPError:
+        except httpx.HTTPError as exc:
+            logger.warning("list_models: HTTP error contacting %s: %s", self.base_url, exc)
             return []
         if response.status_code != 200:
+            logger.warning("list_models: %s returned status %d", self.base_url, response.status_code)
             return []
         try:
             payload = response.json()
         except ValueError:
+            logger.warning("list_models: %s returned invalid JSON", self.base_url)
             return []
         raw_models = payload.get("data", []) if isinstance(payload, Mapping) else []
         models = [str(item["id"]) for item in raw_models if isinstance(item, Mapping) and item.get("id")]
@@ -183,6 +199,20 @@ class OpenAICompatibleProvider(AgentProvider):
             raise ProviderError(
                 f"{self.name} provider returned HTTP {response.status_code}; check endpoint and credentials"
             )
+
+        # Enforce max response size (8 MiB)
+        content_length = response.headers.get("content-length")
+        if content_length and int(content_length) > _MAX_RESPONSE_BYTES:
+            raise ProviderError(
+                f"{self.name} response exceeds {_MAX_RESPONSE_BYTES} bytes limit"
+            )
+        # Also check actual content size
+        body_bytes = response.content
+        if len(body_bytes) > _MAX_RESPONSE_BYTES:
+            raise ProviderError(
+                f"{self.name} response body exceeds {_MAX_RESPONSE_BYTES} bytes limit"
+            )
+
         try:
             body = response.json()
         except ValueError as exc:

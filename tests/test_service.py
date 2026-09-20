@@ -1,8 +1,6 @@
 """Tests for the SUPRA FastAPI service and provider-neutral endpoints."""
-import tempfile
 from fastapi.testclient import TestClient
 from supra_agentic.service import app
-from supra_agentic.state import state_manager
 
 client = TestClient(app)
 
@@ -26,23 +24,17 @@ def test_serve_ui():
 
 
 def test_quick_run_example():
-    with tempfile.TemporaryDirectory() as tmpdir:
-        state_manager.storage_dir = type(state_manager.storage_dir)(tmpdir)
-
-        response = client.get("/api/v1/examples/quick-run")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
-        assert data["example"] is True
-        assert data["stage"] == "COMPLETED"
-        assert "audit_sha256" in data["deliverable"]
-        assert "null_hypothesis_h0" in data["deliverable"]
+    response = client.get("/api/v1/examples/quick-run")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["example"] is True
+    assert data["stage"] == "COMPLETED"
+    assert "audit_sha256" in data["deliverable"]
+    assert "null_hypothesis_h0" in data["deliverable"]
 
 
 def test_webmcp_jsonrpc_protocol():
-    with tempfile.TemporaryDirectory() as tmpdir:
-        state_manager.storage_dir = type(state_manager.storage_dir)(tmpdir)
-
         # 1. initialize
         init_res = client.post("/api/v1/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "initialize"})
         assert init_res.status_code == 200
@@ -68,9 +60,6 @@ def test_webmcp_jsonrpc_protocol():
 
 
 def test_create_and_run_project_and_html_export():
-    with tempfile.TemporaryDirectory() as tmpdir:
-        state_manager.storage_dir = type(state_manager.storage_dir)(tmpdir)
-
         payload = {
             "objective": "Formulate an autonomous Zero-Trust secretless mesh with continuous invariant verification",
             "domain": "cloud_security",
@@ -101,9 +90,6 @@ def test_create_and_run_project_and_html_export():
 
 
 def test_create_project_records_provider_without_calling_it():
-    with tempfile.TemporaryDirectory() as tmpdir:
-        state_manager.storage_dir = type(state_manager.storage_dir)(tmpdir)
-
         response = client.post(
             "/api/v1/projects",
             json={

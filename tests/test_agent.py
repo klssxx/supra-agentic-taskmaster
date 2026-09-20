@@ -1,5 +1,4 @@
 """Tests for the provider-neutral Taskmaster facade and runner."""
-import tempfile
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -55,9 +54,6 @@ def test_taskmaster_agent_delegates_to_selected_provider() -> None:
 
 
 def test_runner_golden_path_execution():
-    with tempfile.TemporaryDirectory() as tmpdir:
-        state_manager.storage_dir = type(state_manager.storage_dir)(tmpdir)
-
         runner = TaskmasterRunner()
         posture = runner.run_golden_path(
             objective="Formulate an autonomous self-healing data pipeline for real-time telemetry",
@@ -83,9 +79,6 @@ def test_runner_golden_path_execution():
 
 
 def test_runner_self_correction_feedback():
-    with tempfile.TemporaryDirectory() as tmpdir:
-        state_manager.storage_dir = type(state_manager.storage_dir)(tmpdir)
-
         # 1. Initialize project
         p = state_manager.create_project(objective="Test Self-Correction Strategy Synthesis")
         pid = p.project_id
