@@ -63,3 +63,5 @@ credentials.json
 
 # Runtime project data (generated at runtime, not tracked)
 data/projects/
+# Exception: keep example file tracked
+!data/projects/example-quick-run.json
