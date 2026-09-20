@@ -60,3 +60,6 @@ credentials.json
 
 # Runtime state (local, non-reproducible)
 .hermes/supra_state/
+
+# Runtime project data (generated at runtime, not tracked)
+data/projects/
