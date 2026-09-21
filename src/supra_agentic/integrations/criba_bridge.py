@@ -13,10 +13,13 @@ Usage:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger("supra_agentic.criba_bridge")
 
 
 def _find_criba_root() -> Path | None:
@@ -144,11 +147,17 @@ def call_criba(
         if result.returncode == 0:
             return json.loads(result.stdout)
         else:
-            return {"error": f"CRIBA exit code {result.returncode}", "stderr": result.stderr[:500]}
+            logger.error("CRIBA subprocess failed with exit code %s", result.returncode)
+            return {
+                "error": f"CRIBA exit code {result.returncode}",
+                "stderr_redacted": True,
+            }
     except subprocess.TimeoutExpired:
         return {"error": f"CRIBA timeout after {timeout}s"}
-    except Exception as e:
-        return {"error": str(e)}
+    except Exception as exc:
+        error_type = type(exc).__name__
+        logger.error("CRIBA bridge failed (%s)", error_type)
+        return {"error": "CRIBA bridge failed", "error_type": error_type}
 
 
 def call_blackforge(
@@ -186,8 +195,14 @@ def call_blackforge(
             # blackforge no tiene --json, parsear stdout manualmente
             return {"raw_output": result.stdout, "success": True}
         else:
-            return {"error": f"BLACKFORGE exit code {result.returncode}", "stderr": result.stderr[:500]}
+            logger.error("BLACKFORGE subprocess failed with exit code %s", result.returncode)
+            return {
+                "error": f"BLACKFORGE exit code {result.returncode}",
+                "stderr_redacted": True,
+            }
     except subprocess.TimeoutExpired:
         return {"error": f"BLACKFORGE timeout after {timeout}s"}
-    except Exception as e:
-        return {"error": str(e)}
+    except Exception as exc:
+        error_type = type(exc).__name__
+        logger.error("BLACKFORGE bridge failed (%s)", error_type)
+        return {"error": "BLACKFORGE bridge failed", "error_type": error_type}
