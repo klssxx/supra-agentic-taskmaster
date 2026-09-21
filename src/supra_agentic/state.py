@@ -154,8 +154,13 @@ class ProjectStateManager:
             p.checkpoints.append(
                 CheckpointRecord(
                     stage=p.stage,
-                    title="Verification Conducted",
-                    evidence_summary=f"Verdict: {report.verdict} (Confidence: {report.confidence_score:.2f}). Invariants Preserved: {report.invariants_preserved}.",
+                    title="Strategy Coverage Evaluated",
+                    evidence_summary=(
+                        f"Coverage verdict: {report.verdict}; "
+                        f"coverage fraction: {report.confidence_score:.2f}; "
+                        f"scope: {report.verification_scope}; "
+                        "not deployed-system or scientific validation."
+                    ),
                     actor="agent:supra:verifier",
                 )
             )
@@ -169,7 +174,7 @@ class ProjectStateManager:
         with self._lock:
             p = self._get_required_project(project_id)
             p.restricted_execution_results.append(result)
-            if result.passed:
+            if result.passed and result.identity_bound:
                 p.stage = TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED
             p.updated_at = time.time()
             p.checkpoints.append(
@@ -178,7 +183,8 @@ class ProjectStateManager:
                     title="Trusted Restricted Execution",
                     evidence_summary=(
                         f"Executed {result.action_type} in {result.duration_ms:.1f}ms. "
-                        f"Passed: {result.passed}. Process isolated: False."
+                        f"Passed: {result.passed}. Identity bound: {result.identity_bound}. "
+                        "Process isolated: False. Scientific validation: False."
                     ),
                     actor="agent:supra:restricted-executor",
                 )
@@ -187,17 +193,38 @@ class ProjectStateManager:
             return p
 
     def complete_project(self, project_id: str, final_output: dict[str, Any]) -> ProjectPosture:
-        """Mark project as COMPLETED with final verifiable deliverable."""
+        """Mark workflow completion without implying verification or scientific proof."""
         with self._lock:
             p = self._get_required_project(project_id)
             p.final_output = final_output
             p.stage = TaskmasterStage.COMPLETED
             p.updated_at = time.time()
+            verification_status = (
+                str(p.verification.verdict) if p.verification else "NOT_EVALUATED"
+            )
+            latest_execution = (
+                p.restricted_execution_results[-1]
+                if p.restricted_execution_results
+                else None
+            )
+            execution_status = (
+                "BOUND_PASS"
+                if latest_execution and latest_execution.passed and latest_execution.identity_bound
+                else "BOUND_FAIL"
+                if latest_execution and latest_execution.identity_bound
+                else "UNBOUND"
+                if latest_execution
+                else "NOT_RUN"
+            )
             p.checkpoints.append(
                 CheckpointRecord(
                     stage=TaskmasterStage.COMPLETED,
-                    title="Taskmaster Mission Complete",
-                    evidence_summary="All 5 stages completed autonomously with verifiable proof and telemetry.",
+                    title="Taskmaster Workflow Complete",
+                    evidence_summary=(
+                        f"Workflow completed. Verification status: {verification_status}. "
+                        f"Restricted execution status: {execution_status}. "
+                        "Scientific validation: NOT_CLAIMED."
+                    ),
                     actor="agent:supra:coordinator",
                 )
             )
