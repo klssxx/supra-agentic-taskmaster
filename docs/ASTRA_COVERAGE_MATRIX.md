@@ -25,7 +25,7 @@ therefore remains **REMOTE CI NOT_RUN** until GitHub Actions executes this HEAD.
 | ASTRA-001 | ENFORCED | UI, API, state and final payload separate workflow completion, coverage verdict, restricted execution and scientific status. Missing UI values no longer become PASS/95%/VERIFIED. |
 | ASTRA-003 | PARTIAL | Final payload records telemetry provenance, transform and scope; universal claim-level provenance remains outside SUPRA. |
 | ASTRA-006 | ENFORCED | Verification verdict vocabulary is closed; confidence is bounded and labelled `HEURISTIC_COVERAGE` / fraction of declared invariants, not probability of real success. |
-| ASTRA-017 | ENFORCED | Restricted stage advances only for a passing execution whose identity is derived from the persisted selected candidate and executed protocol. Caller strings cannot create binding. Scientific validation is structurally rejected. |
+| ASTRA-017 | ENFORCED | Restricted stage advances only for a passing execution whose identity is derived from the persisted selected candidate and executed protocol under the current execution-semantics version. Caller strings cannot create binding. Scientific validation is structurally rejected. |
 | ASTRA-018 | LIMITATION_GUARD | SUPRA does not implement a full discriminant scientific protocol; final output declares `discriminant_protocol_status=NOT_ESTABLISHED`. |
 | ASTRA-019 | ENFORCED | Workflow, textual coverage, restricted execution and scientific status are serialized as separate channels. |
 | ASTRA-020 | NOT_APPLICABLE_RUNTIME | SUPRA does not turn verification verdicts into adaptive rewards; final output declares `learning_update_status=NOT_APPLICABLE`. |
@@ -34,7 +34,7 @@ therefore remains **REMOTE CI NOT_RUN** until GitHub Actions executes this HEAD.
 | ASTRA-027 | LIMITATION_GUARD | No independent confirmatory campaign is claimed; `independent_confirmation_status=NOT_ESTABLISHED`. |
 | ASTRA-028 | LIMITATION_GUARD | Payload explicitly records blinding/positive controls/negative controls/disagreement as false and disallows strong scientific claims. |
 | ASTRA-031 | ENFORCED | MCP/docs describe counterfactual use as inspired/scoped and explicitly deny a full Pearl causal-inference implementation; restricted execution is not called a security sandbox. |
-| ASTRA-033 | ENFORCED | Failed restricted attempts remain in project history after later success; SHA-256 is labelled payload integrity, not truth. |
+| ASTRA-033 | ENFORCED | Failed restricted attempts remain in project history after later success. Persisted legacy/pre-versioned execution-derived stages are downgraded on load and cannot reactivate accreditation after restart. SHA-256 is labelled payload integrity, not truth. |
 | ASTRA-034 | PARTIAL | Manifest, CI gate and CODEOWNERS exist. Server-side branch/ruleset enforcement is not verified here. |
 
 ## Master compatibility
