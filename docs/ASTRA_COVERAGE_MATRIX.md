@@ -1,20 +1,58 @@
-# ASTRA COVERAGE MATRIX
+# ASTRA COVERAGE MATRIX — SUPRA
 
-Observed local gate: `uv run --locked pytest -q tests/astra_canon` → `6 passed`.
+This matrix separates **normative contract presence** from **runtime enforcement**.
+The previous snapshot reported `6 passed` while mapping those tests to twelve
+contracts. That was not sufficient evidence that twelve runtime invariants had
+actually been falsified.
 
-| ID | Contract | Code path(s) | Sentinel(s) | CI | Observed result |
-|---|---|---|---|---|---|
-| ASTRA-001 | ['hecho, hipótesis, pendiente, observación, evidencia y decisión permanecen distintos', 'una estructura completa no eleva certeza'] | `src/supra_agentic/dossier.py`<br>`src/supra_agentic/models.py` | `tests/astra_canon/test_astra_supra_contracts.py` | `ASTRA canon` required job | LOCAL PASS |
-| ASTRA-003 | ['las afirmaciones derivadas conservan source, transformation, version y scope cuando procede', 'la extracción no se presenta como observación experimental'] | `src/supra_agentic/dossier.py`<br>`src/supra_agentic/models.py` | `tests/astra_canon/test_astra_supra_contracts.py` | `ASTRA canon` required job | LOCAL PASS |
-| ASTRA-017 | ['planned test no equivale a executed test', 'generic restricted execution success no equivale a scientific validation'] | `src/supra_agentic/models.py`<br>`src/supra_agentic/state.py` | `tests/astra_canon/test_astra_supra_contracts.py` | `ASTRA canon` required job | LOCAL PASS |
-| ASTRA-018 | ['una prueba relaciona claim, rival explanation, intervention/test, observable, predictions y decision rule', 'una observación no discriminante es INCONCLUSIVE'] | `src/supra_agentic/dossier.py` | `tests/astra_canon/test_astra_supra_contracts.py` | `ASTRA canon` required job | LOCAL PASS |
-| ASTRA-019 | ['prior-art, judge y observed result permanecen separados hasta consumidor', 'combinar canales requiere semántica explícita'] | `src/supra_agentic/tools.py`<br>`src/supra_agentic/models.py` | `tests/astra_canon/test_astra_supra_contracts.py` | `ASTRA canon` required job | LOCAL PASS |
-| ASTRA-020 | ['INDETERMINATE, INVALID y NOT_EVALUATED no generan reward observado'] | `src/supra_agentic/dossier.py`<br>`src/supra_agentic/models.py` | `tests/astra_canon/test_astra_supra_contracts.py` | `ASTRA canon` required job | LOCAL PASS |
-| ASTRA-024 | ['seed y store hash no prometen reproducibilidad global si influyen clock, policy version, corpus, config, provider, ordering, code version o external state', 'se registran las dependencias reales conocidas del componente'] | `src/supra_agentic/dossier.py`<br>`src/supra_agentic/tools.py` | `tests/astra_canon/test_astra_supra_contracts.py` | `ASTRA canon` required job | LOCAL PASS |
-| ASTRA-026 | ['comparaciones contabilizan generation calls, retries, candidate opportunities, selection opportunities, evaluation calls y budget'] | `src/supra_agentic/models.py` | `tests/astra_canon/test_astra_supra_contracts.py` | `ASTRA canon` required job | LOCAL PASS |
-| ASTRA-028 | ['para claims fuertes se documentan blinding, positive controls, negative controls, disagreement y limits cuando aplican'] | `src/supra_agentic/dossier.py`<br>`src/supra_agentic/state.py` | `tests/astra_canon/test_astra_supra_contracts.py` | `ASTRA canon` required job | LOCAL PASS |
-| ASTRA-031 | ['nombres como Pareto, MAP-Elites, do-calculus o causal no acreditan implementación completa', 'las capacidades se describen por contrato real'] | `src/supra_agentic/tools.py` | `tests/astra_canon/test_astra_supra_contracts.py` | `ASTRA canon` required job | LOCAL PASS |
-| ASTRA-033 | ['una reparación no borra negative evidence, historical failures ni original protocols', 'un hash acredita integridad relativa a una referencia, no verdad'] | `src/supra_agentic/dossier.py` | `tests/astra_canon/test_astra_supra_contracts.py` | `ASTRA canon` required job | LOCAL PASS |
-| ASTRA-034 | ['cambiar un contrato requiere versioned decision, evidence y review', 'cambiar implementación conservando contrato está permitido'] | `src/supra_agentic/dossier.py` | `tests/astra_canon/test_astra_supra_contracts.py` | `ASTRA canon` required job | LOCAL PASS |
+Current enforcement vocabulary:
 
-The local result is evidence for the working-tree snapshot at generation time; GitHub Actions remains NOT_RUN until the pushed commit is observed by GitHub.
+- `ENFORCED`: behavioral/product-path sentinel exercises the material invariant.
+- `PARTIAL`: meaningful enforcement exists, but material scope remains open.
+- `LIMITATION_GUARD`: the code prevents an overclaim without implementing the
+  stronger scientific capability.
+- `DOCUMENTATION_ONLY`: governance requirement only.
+- `NOT_APPLICABLE_RUNTIME`: no learning/action path exists in SUPRA for that contract.
+
+## Execution evidence
+
+The historical `6 passed` result belongs to the earlier ASTRA snapshot. New
+behavioral sentinels and runtime repairs were added afterwards. The current branch
+therefore remains **REMOTE CI NOT_RUN** until GitHub Actions executes this HEAD.
+
+| ID | Current enforcement | Evidence / remaining limitation |
+|---|---|---|
+| ASTRA-001 | ENFORCED | UI, API, state and final payload separate workflow completion, coverage verdict, restricted execution and scientific status. Missing UI values no longer become PASS/95%/VERIFIED. |
+| ASTRA-003 | PARTIAL | Final payload records telemetry provenance, transform and scope; universal claim-level provenance remains outside SUPRA. |
+| ASTRA-006 | ENFORCED | Verification verdict vocabulary is closed; confidence is bounded and labelled `HEURISTIC_COVERAGE` / fraction of declared invariants, not probability of real success. |
+| ASTRA-017 | ENFORCED | Restricted stage advances only for a passing execution whose identity is derived from the persisted selected candidate and executed protocol. Caller strings cannot create binding. Scientific validation is structurally rejected. |
+| ASTRA-018 | LIMITATION_GUARD | SUPRA does not implement a full discriminant scientific protocol; final output declares `discriminant_protocol_status=NOT_ESTABLISHED`. |
+| ASTRA-019 | ENFORCED | Workflow, textual coverage, restricted execution and scientific status are serialized as separate channels. |
+| ASTRA-020 | NOT_APPLICABLE_RUNTIME | SUPRA does not turn verification verdicts into adaptive rewards; final output declares `learning_update_status=NOT_APPLICABLE`. |
+| ASTRA-024 | PARTIAL | Final payload records known dependencies and explicitly sets `closure_complete=false` with unclosed code/runtime/provider/environment dependencies. |
+| ASTRA-026 | PARTIAL | Candidate, selection, verification and restricted-execution opportunities are counted. Provider generation-call accounting remains explicitly non-authoritative and `budget_complete=false`. |
+| ASTRA-027 | LIMITATION_GUARD | No independent confirmatory campaign is claimed; `independent_confirmation_status=NOT_ESTABLISHED`. |
+| ASTRA-028 | LIMITATION_GUARD | Payload explicitly records blinding/positive controls/negative controls/disagreement as false and disallows strong scientific claims. |
+| ASTRA-031 | ENFORCED | MCP/docs describe counterfactual use as inspired/scoped and explicitly deny a full Pearl causal-inference implementation; restricted execution is not called a security sandbox. |
+| ASTRA-033 | ENFORCED | Failed restricted attempts remain in project history after later success; SHA-256 is labelled payload integrity, not truth. |
+| ASTRA-034 | PARTIAL | Manifest, CI gate and CODEOWNERS exist. Server-side branch/ruleset enforcement is not verified here. |
+
+## Master compatibility
+
+The CRIBA master canon scopes **14** contracts to SUPRA:
+
+`001, 003, 006, 017, 018, 019, 020, 024, 026, 027, 028, 031, 033, 034`.
+
+All 14 are present in the SUPRA manifest. The previous omissions of
+`ASTRA-006` and `ASTRA-027` are closed.
+
+## Scientific state
+
+- `D3_NOVELTY = UNRESOLVED`
+- `D4_FUNCTIONAL_DIVERSITY = UNRESOLVED`
+- `D6_ADAPTIVE_BENEFIT = STILL_UNRESOLVED`
+- `SCIENTIFIC_ADVANTAGE_OF_CRIBA = NOT_ESTABLISHED`
+- Anti-Goodhart runtime is not implemented by this branch.
+
+A green CI run is evidence for the checks that actually executed. It is not a
+blanket scientific validation of SUPRA or CRIBA.
