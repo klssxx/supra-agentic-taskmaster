@@ -25,6 +25,7 @@ from .models import (
     StructuredDecomposition,
     TaskmasterStage,
     VerificationReport,
+    candidate_execution_identity,
 )
 
 logger = logging.getLogger("supra_agentic.state")
@@ -177,8 +178,23 @@ class ProjectStateManager:
         """Record trusted restricted execution without claiming process isolation."""
         with self._lock:
             p = self._get_required_project(project_id)
+            expected = (
+                candidate_execution_identity(p.selected_candidate)
+                if p.selected_candidate is not None
+                else None
+            )
+            identity_matches = bool(
+                result.identity_bound
+                and expected is not None
+                and result.candidate_id == expected["candidate_id"]
+                and result.mechanism_version == expected["mechanism_version"]
+                and result.claim_id == expected["claim_id"]
+                and isinstance(result.protocol_version, str)
+                and result.protocol_version.startswith("sha256:")
+            )
+            result.identity_bound = identity_matches
             p.restricted_execution_results.append(result)
-            if result.passed and result.identity_bound:
+            if result.passed and identity_matches:
                 p.stage = TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED
             p.updated_at = time.time()
             p.checkpoints.append(
