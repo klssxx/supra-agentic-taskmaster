@@ -44,7 +44,7 @@
             
             <p class="section-desc">
                 State any complex engineering, architecture, or cybersecurity challenge. 
-                SUPRA autonomously decomposes, formulates orthogonal strategies, runs sandbox verification, and produces verifiable deliverables.
+                SUPRA autonomously decomposes, formulates strategy candidates, evaluates textual invariant coverage, runs a trusted in-process restricted check, and produces integrity-addressed deliverables.
             </p>
 
             <form id="task-form" onsubmit="handleRunTask(event)">
@@ -125,9 +125,9 @@
                     <div class="step-label">Stratified</div>
                 </div>
                 <div class="step-connector"></div>
-                <div class="step" id="step-sandbox">
+                <div class="step" id="step-restricted">
                     <div class="step-num">04</div>
-                    <div class="step-label">Sandbox</div>
+                    <div class="step-label">Restricted Check</div>
                 </div>
                 <div class="step-connector"></div>
                 <div class="step" id="step-completed">
