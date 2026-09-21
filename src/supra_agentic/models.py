@@ -97,6 +97,7 @@ class RestrictedExecutionResult(BaseModel):
     action_type: str
     passed: bool
     output_log: str
+    error_type: str | None = None
     duration_ms: float
     side_effects_contained: bool = False
     execution_classification: str = "RESTRICTED_EXECUTION"
