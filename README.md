@@ -1,19 +1,21 @@
 # SUPRA Agentic Taskmaster
 
-Provider-neutral autonomous engine for decomposing complex objectives,
-testing causal strategies, and issuing auditable technical dossiers.
+Provider-neutral engine for decomposing complex objectives, generating strategy
+candidates, evaluating scoped textual invariant coverage, running trusted
+restricted checks, and issuing auditable technical dossiers.
 
 ## What it does
 
 SUPRA combines a deterministic five-stage workflow with an optional model
 boundary. The deterministic stages remain authoritative for state transitions,
-safety gates, sandbox verification, and the SHA-256 deliverable ledger.
+safety gates, scoped coverage evaluation, trusted restricted execution, and the
+SHA-256 payload-integrity ledger.
 
 1. **RECEIVED** — capture the objective and initialize an isolated project.
 2. **STRUCTURED** — separate invariants, mutable assumptions, and subtasks.
 3. **STRATIFIED** — produce Conservative, Orthogonal, and Disruptive pathways.
-4. **RESTRICTED_EXECUTION_VERIFIED** — verify invariants and run a fixed trusted internal check. This is in-process restricted execution, not a security sandbox, and it does not accept arbitrary remote Python.
-5. **COMPLETED** — persist checkpoints and export the integrity-checked dossier.
+4. **RESTRICTED_EXECUTION_VERIFIED** — the trusted internal check passed and is bound to the persisted selected candidate/protocol. This is in-process restricted execution, not a security sandbox or scientific validation.
+5. **COMPLETED** — the workflow finished and exported the integrity-addressed dossier. Completion does not imply verification PASS or scientific validity.
 
 The model is an interchangeable assistant, not a hidden requirement. The
 application can execute the complete workflow offline and can optionally use
@@ -29,7 +31,7 @@ Provider-neutral Taskmaster facade ---- optional model provider
           |
           v
 Deterministic stage runner
-  decompose -> synthesize -> verify -> sandbox -> checkpoint
+  decompose -> synthesize -> coverage-check -> restricted-check -> checkpoint
           |
           v
 Thread-safe state + JSON/Markdown/HTML dossier + SHA-256 ledger
@@ -131,8 +133,12 @@ same Uvicorn application and does not assume a hosting vendor or provider.
   provider process.
 - Error responses do not include provider response bodies or authorization
   headers.
-- The deterministic sandbox remains contained and its evidence is persisted in
-  the project checkpoint ledger.
+- Restricted execution is in-process, accepts only the trusted internal contract,
+  rejects imports/unbounded loop constructs, and is **not** an OS/process sandbox.
+- A restricted PASS is scoped to that internal protocol; it is not proof of
+  deployed-system safety or scientific validation.
+- SHA-256 identifies serialized payload integrity relative to the hashed bytes;
+  it is not evidence that the payload is true.
 
 ## License
 
