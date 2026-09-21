@@ -94,7 +94,11 @@ class ProjectStateManager:
                     self._projects[project_id] = posture
                     return posture
                 except Exception as exc:
-                    logger.error(f"Failed to load project {project_id} from disk: {exc}")
+                    logger.error(
+                        "Failed to load project %s from disk (%s)",
+                        project_id,
+                        type(exc).__name__,
+                    )
             return None
 
     def update_decomposition(
