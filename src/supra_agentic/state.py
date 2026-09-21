@@ -194,8 +194,24 @@ class ProjectStateManager:
             )
             result.identity_bound = identity_matches
             p.restricted_execution_results.append(result)
-            if result.passed and identity_matches:
-                p.stage = TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED
+            if p.stage not in {TaskmasterStage.COMPLETED, TaskmasterStage.FAILED}:
+                p.stage = (
+                    TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED
+                    if result.passed and identity_matches
+                    else TaskmasterStage.STRATIFIED
+                )
+            if p.final_output is not None:
+                output = dict(p.final_output)
+                output["restricted_execution_identity_bound"] = result.identity_bound
+                output["restricted_execution_status"] = (
+                    "BOUND_PASS"
+                    if result.passed and result.identity_bound
+                    else "BOUND_FAIL"
+                    if result.identity_bound
+                    else "UNBOUND"
+                )
+                output["derived_execution_state_revalidated"] = True
+                p.final_output = output
             p.updated_at = time.time()
             p.checkpoints.append(
                 CheckpointRecord(
