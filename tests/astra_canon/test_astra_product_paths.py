@@ -73,6 +73,7 @@ def test_astra_017_product_execution_derives_binding_from_persisted_candidate():
         execution = result["restricted_execution_result"]
         assert execution["passed"] is True
         assert execution["identity_bound"] is True
+        assert execution["execution_semantics_version"] == 2
         assert execution["candidate_id"] == selected.candidate_id
         assert execution["claim_id"].startswith("claim-")
         assert execution["mechanism_version"].startswith("sha256:")
@@ -159,9 +160,10 @@ def test_astra_033_failed_restricted_attempt_is_preserved_after_later_success():
         current = state_manager.get_project(posture.project_id)
         assert current is not None
         assert failed["passed"] is False
+        assert failed["error_type"] == "RuntimeError"
         assert passed["passed"] is True
         assert [item.passed for item in current.restricted_execution_results] == [False, True]
-        assert "sentinel failure" in current.restricted_execution_results[0].output_log
+        assert "sentinel failure" not in current.restricted_execution_results[0].output_log
     finally:
         tmp.cleanup()
 
@@ -253,3 +255,31 @@ def test_astra_017_runner_cannot_complete_without_bound_passing_execution(monkey
     assert posture.final_output is None
     assert posture.error_message == "Taskmaster execution failed (RuntimeError)"
     assert "SENTINEL_INTERNAL_DETAIL" not in posture.error_message
+
+
+def test_astra_b03_ids_alone_cannot_reactivate_pre_versioned_execution():
+    raw = {
+        "project_id": "legacy-complete-ids",
+        "objective": "legacy-complete-ids",
+        "stage": "RESTRICTED_EXECUTION_VERIFIED",
+        "created_at": 1.0,
+        "updated_at": 2.0,
+        "restricted_execution_results": [
+            {
+                "execution_id": "exec-old",
+                "candidate_id": "cand-old",
+                "mechanism_version": "sha256:old",
+                "claim_id": "claim-old",
+                "protocol_version": "sha256:old-protocol",
+                "action_type": "legacy",
+                "passed": True,
+                "output_log": "legacy-pass",
+                "duration_ms": 1.0,
+            }
+        ],
+        "checkpoints": [],
+    }
+    posture = ProjectPosture.model_validate(raw)
+    assert posture.stage is TaskmasterStage.STRATIFIED
+    assert posture.restricted_execution_results[0].identity_bound is False
+    assert posture.restricted_execution_results[0].execution_semantics_version is None
