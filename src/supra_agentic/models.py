@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import time
 import uuid
 from enum import Enum
@@ -61,6 +63,28 @@ class StrategyCandidate(BaseModel):
     divergence_score: float = 0.5
     feasibility_score: float = 0.8
     is_selected: bool = False
+
+
+def candidate_execution_identity(candidate: StrategyCandidate) -> dict[str, str]:
+    """Deterministic identity of the persisted candidate mechanism/claim."""
+    mechanism_payload = json.dumps(
+        {
+            "candidate_id": candidate.candidate_id,
+            "pathway_name": candidate.pathway_name,
+            "hypothesis": candidate.hypothesis,
+            "action_plan": candidate.action_plan,
+        },
+        sort_keys=True,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return {
+        "candidate_id": candidate.candidate_id,
+        "mechanism_version": "sha256:"
+        + hashlib.sha256(mechanism_payload.encode("utf-8")).hexdigest(),
+        "claim_id": "claim-"
+        + hashlib.sha256(candidate.hypothesis.encode("utf-8")).hexdigest()[:24],
+    }
 
 
 class VerificationReport(BaseModel):
