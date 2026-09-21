@@ -11,6 +11,20 @@ def generate_svg_architecture(posture: ProjectPosture) -> str:
         posture.selected_candidate.pathway_name if posture.selected_candidate else "Standard"
     )
     verdict = posture.verification.verdict if posture.verification else "NOT_EVALUATED"
+    latest_execution = (
+        posture.restricted_execution_results[-1]
+        if posture.restricted_execution_results
+        else None
+    )
+    restricted_status = (
+        "BOUND_PASS"
+        if latest_execution and latest_execution.passed and latest_execution.identity_bound
+        else "BOUND_FAIL"
+        if latest_execution and latest_execution.identity_bound
+        else "UNBOUND"
+        if latest_execution
+        else "NOT_RUN"
+    )
 
     return f"""<svg width="720" height="200" viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg">
   <defs>
@@ -41,10 +55,11 @@ def generate_svg_architecture(posture: ProjectPosture) -> str:
   <text x="300" y="95" fill="#F0F4F8" font-family="sans-serif" font-size="11" font-weight="bold" text-anchor="middle">02. STRATEGY</text>
   <text x="300" y="115" fill="#00FFCC" font-family="monospace" font-size="9" text-anchor="middle">{cand_name[:14]}...</text>
 
-  <!-- Node 3: Trusted Restricted Execution -->
+  <!-- Node 3: Scoped coverage + restricted execution -->
   <rect x="460" y="60" width="120" height="80" rx="6" fill="#131822" stroke="#00FFCC" stroke-width="1.5"/>
-  <text x="520" y="95" fill="#F0F4F8" font-family="sans-serif" font-size="11" font-weight="bold" text-anchor="middle">03. RESTRICTED</text>
-  <text x="520" y="115" fill="#10B981" font-family="monospace" font-size="9" text-anchor="middle">Internal Check ({verdict})</text>
+  <text x="520" y="90" fill="#F0F4F8" font-family="sans-serif" font-size="11" font-weight="bold" text-anchor="middle">03. CHECKS</text>
+  <text x="520" y="108" fill="#10B981" font-family="monospace" font-size="9" text-anchor="middle">Coverage: {verdict}</text>
+  <text x="520" y="124" fill="#94A3B8" font-family="monospace" font-size="8" text-anchor="middle">Restricted: {restricted_status}</text>
 
   <!-- Node 4: Final Deliverable -->
   <circle cx="660" cy="100" r="28" fill="url(#tealGrad)"/>
