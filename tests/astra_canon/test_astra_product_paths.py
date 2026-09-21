@@ -283,3 +283,40 @@ def test_astra_b03_ids_alone_cannot_reactivate_pre_versioned_execution():
     assert posture.stage is TaskmasterStage.STRATIFIED
     assert posture.restricted_execution_results[0].identity_bound is False
     assert posture.restricted_execution_results[0].execution_semantics_version is None
+
+
+def test_astra_b03_current_semantics_with_forged_candidate_identity_is_downgraded():
+    raw = {
+        "project_id": "forged-current",
+        "objective": "forged-current",
+        "stage": "RESTRICTED_EXECUTION_VERIFIED",
+        "created_at": 1.0,
+        "updated_at": 2.0,
+        "selected_candidate": {
+            "candidate_id": "cand-real",
+            "pathway_name": "real-path",
+            "paradigm_type": "CONSERVATIVE",
+            "hypothesis": "real hypothesis",
+            "action_plan": ["step"],
+            "is_selected": True,
+        },
+        "restricted_execution_results": [
+            {
+                "execution_id": "exec-forged",
+                "execution_semantics_version": 2,
+                "candidate_id": "cand-forged",
+                "mechanism_version": "sha256:" + "0" * 64,
+                "claim_id": "claim-forged",
+                "protocol_version": "sha256:" + "1" * 64,
+                "action_type": "legacy-forged",
+                "passed": True,
+                "output_log": "forged",
+                "duration_ms": 1.0,
+            }
+        ],
+        "checkpoints": [],
+    }
+    posture = ProjectPosture.model_validate(raw)
+    assert posture.stage is TaskmasterStage.STRATIFIED
+    assert posture.restricted_execution_results[0].identity_bound is True
+    assert posture.checkpoints[-1].title == "Persisted execution accreditation invalidated"
