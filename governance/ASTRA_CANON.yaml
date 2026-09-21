@@ -87,7 +87,8 @@ contracts:
   - tests/astra_canon/test_astra_supra_contracts.py
   - tests/astra_canon/test_astra_product_paths.py
   limitations:
-  - La ejecución restringida acredita únicamente su propio protocolo interno y solo avanza de etapa si la identidad está ligada al candidato persistido.
+  - La ejecución restringida acredita únicamente su propio protocolo interno y solo avanza de etapa si la identidad está ligada al candidato persistido bajo la versión semántica vigente.
+  - Resultados legacy o pre-versionados no reactivan RESTRICTED_EXECUTION_VERIFIED tras restart.
 
 - id: ASTRA-018
   name: Pertinencia discriminante
@@ -223,6 +224,7 @@ contracts:
   - tests/astra_canon/test_astra_frontend_contracts.py
   limitations:
   - Restricted attempts se preservan append-style en el posture.
+  - Estados de ejecución derivados bajo semántica antigua se conservan pero se degradan y no mantienen acreditación vigente.
   - SHA-256 se describe únicamente como integridad del payload serializado.
 
 - id: ASTRA-034
