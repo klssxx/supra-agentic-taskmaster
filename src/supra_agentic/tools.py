@@ -16,6 +16,7 @@ import time
 from typing import Any
 
 from .models import (
+    RESTRICTED_EXECUTION_SEMANTICS_VERSION,
     RestrictedExecutionResult,
     StrategyCandidate,
     StructuredDecomposition,
@@ -559,6 +560,7 @@ def restricted_python_executor(
             mechanism_version=bound_mechanism_version,
             claim_id=bound_claim_id,
             protocol_version=resolved_protocol,
+            execution_semantics_version=RESTRICTED_EXECUTION_SEMANTICS_VERSION,
             observed_result="PASS",
             action_type="TRUSTED_RESTRICTED_PYTHON",
             passed=True,
@@ -577,6 +579,7 @@ def restricted_python_executor(
             mechanism_version=bound_mechanism_version,
             claim_id=bound_claim_id,
             protocol_version=resolved_protocol,
+            execution_semantics_version=RESTRICTED_EXECUTION_SEMANTICS_VERSION,
             observed_result="FAIL",
             action_type="TRUSTED_RESTRICTED_PYTHON",
             passed=False,
