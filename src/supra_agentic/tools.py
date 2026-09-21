@@ -570,6 +570,8 @@ def restricted_python_executor(
         )
     except Exception as exc:
         duration_ms = (time.monotonic() - start_time) * 1000
+        error_type = type(exc).__name__
+        logger.warning("Restricted internal execution rejected (%s)", error_type)
         result = RestrictedExecutionResult(
             candidate_id=bound_candidate_id,
             mechanism_version=bound_mechanism_version,
@@ -578,7 +580,8 @@ def restricted_python_executor(
             observed_result="FAIL",
             action_type="TRUSTED_RESTRICTED_PYTHON",
             passed=False,
-            output_log=f"Restricted internal execution rejected: {exc}"[:MAX_OUTPUT_SIZE],
+            output_log=f"Restricted internal execution rejected ({error_type}).",
+            error_type=error_type,
             duration_ms=round(duration_ms, 2),
         )
 
