@@ -89,14 +89,16 @@ def test_create_and_run_project_and_html_export():
             "allow_disruptive": True,
         }
         response = client.post("/api/v1/projects", json=payload)
-        # Pipeline fails verification - service correctly returns 500 with error details
-        assert response.status_code == 500
+        # A strategy-coverage FAIL is not a workflow/server failure.
+        assert response.status_code == 201
         data = response.json()
-        assert data["status"] == "error"
+        assert data["status"] == "success"
+        assert data["status_scope"] == "WORKFLOW_EXECUTION_ONLY"
         assert "project_id" in data
         assert data["stage"] == "COMPLETED"
-        assert "verification" in data
-        assert data["verification"]["verdict"] == "FAIL"
+        assert data["workflow_status"] == "COMPLETED"
+        assert data["verification_status"] == "FAIL"
+        assert data["scientific_status"] == "NOT_VALIDATED"
 
 
 def test_create_project_records_provider_without_calling_it():
@@ -113,11 +115,13 @@ def test_create_project_records_provider_without_calling_it():
             },
         )
 
-        # Pipeline fails verification - service correctly returns 500 with error details
-        assert response.status_code == 500
+        # A strategy-coverage FAIL is not a workflow/server failure.
+        assert response.status_code == 201
         data = response.json()
-        assert data["status"] == "error"
+        assert data["status"] == "success"
+        assert data["status_scope"] == "WORKFLOW_EXECUTION_ONLY"
         assert "project_id" in data
         assert data["stage"] == "COMPLETED"
-        assert "verification" in data
-        assert data["verification"]["verdict"] == "FAIL"
+        assert data["workflow_status"] == "COMPLETED"
+        assert data["verification_status"] == "FAIL"
+        assert data["scientific_status"] == "NOT_VALIDATED"
