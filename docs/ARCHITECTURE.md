@@ -7,8 +7,8 @@ SUPRA is split into four explicit boundaries:
 1. **Transport** — FastAPI REST, the Web UI, and the JSON-RPC tool endpoint.
 2. **Provider facade** — a small typed contract for Hermes/Nous, Ollama,
    OpenAI, and arbitrary OpenAI-compatible endpoints.
-3. **Deterministic coordinator** — five stateful stages with safety gates and
-   bounded sandbox execution.
+3. **Deterministic coordinator** — five stateful stages with safety gates,
+   textual strategy-coverage evaluation, and trusted in-process restricted execution.
 4. **Evidence** — thread-safe project persistence plus JSON, Markdown, and HTML
    dossier exports with a SHA-256 integrity value.
 
@@ -27,12 +27,13 @@ deterministic project state.
 ## State flow
 
 ```text
-RECEIVED -> STRUCTURED -> STRATIFIED -> SANDBOX_VERIFIED -> COMPLETED
+RECEIVED -> STRUCTURED -> STRATIFIED -> RESTRICTED_EXECUTION_VERIFIED -> COMPLETED
 ```
 
 Each transition writes a checkpoint containing the actor, evidence summary, and
 timestamp. `record_checkpoint` serializes the final deliverable in sorted JSON
-before computing the integrity digest.
+before computing an integrity digest. That SHA-256 identifies those serialized
+bytes; it is not a truth, verification, or scientific-validity certificate.
 
 ## Safety model
 
@@ -41,8 +42,15 @@ before computing the integrity digest.
   `SUPRA_USE_MODEL=true`.
 - Model output is advisory and recorded separately from deterministic evidence.
 - Provider HTTP errors exclude response bodies and authorization headers.
-- The sandbox accepts only the constrained actions implemented by
-  `execute_sandbox_action`.
+- `verify_solution` is a deterministic textual coverage heuristic. Its PASS
+  means supported invariant keywords are covered by the selected strategy text;
+  it is not deployed-system certification.
+- `restricted_python_executor` is an in-process trusted internal check, not a
+  security sandbox. It cannot claim process isolation or scientific validation.
+- The restricted stage advances only when a passing execution is bound to the
+  persisted selected candidate and the actually executed protocol.
+- `COMPLETED` denotes workflow completion only; verification and scientific
+  status remain separate fields.
 
 ## Extension points
 
