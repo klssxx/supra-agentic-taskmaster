@@ -7,7 +7,7 @@ import tempfile
 import pytest
 from pydantic import ValidationError
 
-from supra_agentic.models import TaskmasterStage, VerificationReport
+from supra_agentic.models import ProjectPosture, TaskmasterStage, VerificationReport
 from supra_agentic.state import state_manager
 from supra_agentic.tools import (
     decompose_objective,
@@ -162,3 +162,64 @@ def test_astra_033_failed_restricted_attempt_is_preserved_after_later_success():
         assert "sentinel failure" in current.restricted_execution_results[0].output_log
     finally:
         tmp.cleanup()
+
+
+def test_astra_b03_legacy_verified_stage_is_downgraded_without_bound_execution():
+    raw = {
+        "project_id": "legacy-project",
+        "objective": "legacy",
+        "stage": "SANDBOX_VERIFIED",
+        "created_at": 1.0,
+        "updated_at": 2.0,
+        "sandbox_results": [
+            {
+                "action_type": "legacy",
+                "passed": True,
+                "output_log": "legacy-pass",
+                "duration_ms": 1.0,
+            }
+        ],
+        "checkpoints": [],
+    }
+    posture = ProjectPosture.model_validate(raw)
+    assert posture.stage is TaskmasterStage.STRATIFIED
+    assert posture.restricted_execution_results
+    assert posture.restricted_execution_results[0].identity_bound is False
+    assert posture.checkpoints[-1].title == "Legacy execution accreditation invalidated"
+
+
+def test_astra_b03_current_verified_stage_is_downgraded_if_binding_was_not_persisted():
+    raw = {
+        "project_id": "legacy-current-project",
+        "objective": "legacy-current",
+        "stage": "RESTRICTED_EXECUTION_VERIFIED",
+        "created_at": 1.0,
+        "updated_at": 2.0,
+        "restricted_execution_results": [
+            {
+                "action_type": "legacy-current",
+                "passed": True,
+                "output_log": "legacy-pass",
+                "duration_ms": 1.0,
+            }
+        ],
+        "checkpoints": [],
+    }
+    posture = ProjectPosture.model_validate(raw)
+    assert posture.stage is TaskmasterStage.STRATIFIED
+    assert posture.restricted_execution_results[0].identity_bound is False
+
+
+def test_astra_033_restricted_exception_message_is_redacted(tmp_path):
+    state_manager.storage_dir = type(state_manager.storage_dir)(tmp_path)
+    p = state_manager.create_project("redaction")
+    decompose_objective(p.project_id, "redaction")
+    synthesize_strategy(p.project_id, pathways_count=1, allow_disruptive=False)
+    result = restricted_python_executor(
+        p.project_id,
+        code_snippet="raise RuntimeError('SENTINEL_SECRET_DO_NOT_LEAK')",
+        trusted_internal=True,
+    )["restricted_execution_result"]
+    assert result["passed"] is False
+    assert result["error_type"] == "RuntimeError"
+    assert "SENTINEL_SECRET_DO_NOT_LEAK" not in result["output_log"]
