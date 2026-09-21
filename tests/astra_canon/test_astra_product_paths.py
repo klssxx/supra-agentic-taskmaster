@@ -318,5 +318,5 @@ def test_astra_b03_current_semantics_with_forged_candidate_identity_is_downgrade
     }
     posture = ProjectPosture.model_validate(raw)
     assert posture.stage is TaskmasterStage.STRATIFIED
-    assert posture.restricted_execution_results[0].identity_bound is True
+    assert posture.restricted_execution_results[0].identity_bound is False
     assert posture.checkpoints[-1].title == "Persisted execution accreditation invalidated"
