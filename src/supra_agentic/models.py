@@ -245,6 +245,43 @@ class ProjectPosture(BaseModel):
             migrated["checkpoints"] = checkpoints
         return migrated
 
+    @model_validator(mode="after")
+    def revalidate_persisted_execution_accreditation(self) -> "ProjectPosture":
+        if self.stage is not TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED:
+            return self
+
+        expected = (
+            candidate_execution_identity(self.selected_candidate)
+            if self.selected_candidate is not None
+            else None
+        )
+        has_authoritative_bound_pass = any(
+            result.passed
+            and result.identity_bound
+            and expected is not None
+            and result.candidate_id == expected["candidate_id"]
+            and result.mechanism_version == expected["mechanism_version"]
+            and result.claim_id == expected["claim_id"]
+            and isinstance(result.protocol_version, str)
+            and result.protocol_version.startswith("sha256:")
+            for result in self.restricted_execution_results
+        )
+        if not has_authoritative_bound_pass:
+            self.stage = TaskmasterStage.STRATIFIED
+            self.checkpoints.append(
+                CheckpointRecord(
+                    stage=TaskmasterStage.STRATIFIED,
+                    title="Persisted execution accreditation invalidated",
+                    evidence_summary=(
+                        "Execution-derived stage was downgraded on load because "
+                        "no current-semantics bound pass matches the persisted "
+                        "selected candidate."
+                    ),
+                    actor="system:migration_guard",
+                )
+            )
+        return self
+
     project_id: str
     objective: str
     stage: TaskmasterStage
