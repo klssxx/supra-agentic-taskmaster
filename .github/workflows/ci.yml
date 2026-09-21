@@ -50,6 +50,8 @@ jobs:
     steps:
       # v7.0.1, tag verified with git ls-remote on 2026-09-20.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
       # v7.0.0, tag verified with git ls-remote on 2026-09-20.
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
@@ -75,6 +77,8 @@ jobs:
     steps:
       # v7.0.1, tag verified with git ls-remote on 2026-09-20.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
       # v7.0.0, tag verified with git ls-remote on 2026-09-20.
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
@@ -106,6 +110,8 @@ jobs:
     steps:
       # v7.0.1, tag verified with git ls-remote on 2026-09-20.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
       # v7.0.0, tag verified with git ls-remote on 2026-09-20.
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
@@ -136,6 +142,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
+          persist-credentials: false
       # v3.0.0, tag verified with git ls-remote on 2026-09-20.
       - uses: zricethezav/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e
         with:
@@ -148,13 +155,15 @@ jobs:
     steps:
       # v7.0.1, tag verified with git ls-remote on 2026-09-20.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
       - name: Download and verify Trivy for Linux
         shell: bash
         run: |
           set -euo pipefail
           archive="trivy_0.72.0_Linux-64bit.tar.gz"
           toolDir="trivy-0.72.0"
-          expected="ed3cf122060f61818fe1f735fd97557954e16e10bc8b058af9852271cf2e91b3"
+          expected="bbb64b9695866ce4a7a8f5c9592002c5961cab378577fa3f8a040df362b9b2ea"
           curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/v0.72.0/${archive}" -o "${archive}"
           actual=$(sha256sum "${archive}" | cut -d' ' -f1)
           if [ "${actual}" != "${expected}" ]; then
@@ -186,6 +195,8 @@ jobs:
     steps:
       # v7.0.1, tag verified with git ls-remote on 2026-09-20.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
       # v10.1.0, tag verified with git ls-remote on 2026-09-20.
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
         with:
@@ -203,6 +214,8 @@ jobs:
     steps:
       # v7.0.1, tag verified with git ls-remote on 2026-09-20.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
       - name: Build Docker image
         run: docker build -t supra-ci .
       - name: Run container & health check
