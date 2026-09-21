@@ -172,7 +172,7 @@ class TaskmasterRunner:
 
             final_posture = state_manager.get_project(pid)
             assert final_posture is not None
-            logger.info(f"[{pid}] Taskmaster Golden Path COMPLETED successfully in {elapsed:.2f}s.")
+            logger.info(f"[{pid}] Taskmaster workflow COMPLETED in {elapsed:.2f}s; verification/scientific status remain separate.")
             return final_posture
 
         except Exception as exc:
