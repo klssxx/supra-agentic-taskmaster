@@ -320,3 +320,50 @@ def test_astra_b03_current_semantics_with_forged_candidate_identity_is_downgrade
     assert posture.stage is TaskmasterStage.STRATIFIED
     assert posture.restricted_execution_results[0].identity_bound is False
     assert posture.checkpoints[-1].title == "Persisted execution accreditation invalidated"
+
+
+def test_astra_b03_completed_workflow_keeps_completion_but_invalidates_stale_execution_cache():
+    raw = {
+        "project_id": "completed-stale-derived",
+        "objective": "completed-stale-derived",
+        "stage": "COMPLETED",
+        "created_at": 1.0,
+        "updated_at": 2.0,
+        "selected_candidate": {
+            "candidate_id": "cand-real",
+            "pathway_name": "real-path",
+            "paradigm_type": "CONSERVATIVE",
+            "hypothesis": "real hypothesis",
+            "action_plan": ["step"],
+            "is_selected": True,
+        },
+        "restricted_execution_results": [
+            {
+                "execution_id": "exec-forged",
+                "execution_semantics_version": 2,
+                "candidate_id": "cand-forged",
+                "mechanism_version": "sha256:" + "0" * 64,
+                "claim_id": "claim-forged",
+                "protocol_version": "sha256:" + "1" * 64,
+                "action_type": "legacy-forged",
+                "passed": True,
+                "output_log": "forged",
+                "duration_ms": 1.0,
+            }
+        ],
+        "final_output": {
+            "workflow_status": "COMPLETED",
+            "restricted_execution_identity_bound": True,
+            "restricted_execution_status": "BOUND_PASS",
+            "scientific_status": "NOT_VALIDATED",
+        },
+        "checkpoints": [],
+    }
+    posture = ProjectPosture.model_validate(raw)
+    assert posture.stage is TaskmasterStage.COMPLETED
+    assert posture.restricted_execution_results[0].identity_bound is False
+    assert posture.final_output is not None
+    assert posture.final_output["workflow_status"] == "COMPLETED"
+    assert posture.final_output["restricted_execution_identity_bound"] is False
+    assert posture.final_output["restricted_execution_status"] == "UNBOUND"
+    assert posture.final_output["derived_execution_state_revalidated"] is True
