@@ -1,9 +1,9 @@
 """Tests for SUPRA Project State Manager and Models."""
+
 import tempfile
-from pathlib import Path
+
 from supra_agentic.models import (
-    CheckpointRecord,
-    SandboxExecutionResult,
+    RestrictedExecutionResult,
     StrategyCandidate,
     StructuredDecomposition,
     Subtask,
@@ -77,16 +77,16 @@ def test_project_lifecycle_transitions():
         )
         sm.record_verification(p.project_id, v_rep)
 
-        # Stage 4b: Sandbox execution
-        sb_res = SandboxExecutionResult(
-            action_type="CODE_RUN",
+        # Stage 4b: trusted restricted execution
+        execution_result = RestrictedExecutionResult(
+            action_type="RESTRICTED_CODE_RUN",
             passed=True,
-            output_log="Verified 5/5 synthetic challenge-response assertions in sandbox.",
+            output_log="Verified 5/5 fixed internal assertions.",
             duration_ms=4.2,
         )
-        p4 = sm.record_sandbox_execution(p.project_id, sb_res)
-        assert p4.stage == TaskmasterStage.SANDBOX_VERIFIED
-        assert len(p4.sandbox_results) == 1
+        p4 = sm.record_restricted_execution(p.project_id, execution_result)
+        assert p4.stage == TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED
+        assert len(p4.restricted_execution_results) == 1
 
         # Stage 5: Completion
         final_doc = {

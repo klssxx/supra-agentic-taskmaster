@@ -1,17 +1,16 @@
 """Dossier and Technical Export Generator with Embedded SVG Architecture."""
-from __future__ import annotations
 
-import json
-from typing import Any
+from __future__ import annotations
 
 from .models import ProjectPosture
 
 
 def generate_svg_architecture(posture: ProjectPosture) -> str:
     """Generate an inline SVG diagram representing the project's autonomous DAG."""
-    stage = posture.stage.value
-    cand_name = posture.selected_candidate.pathway_name if posture.selected_candidate else "Standard"
-    verdict = posture.verification.verdict if posture.verification else "PASS"
+    cand_name = (
+        posture.selected_candidate.pathway_name if posture.selected_candidate else "Standard"
+    )
+    verdict = posture.verification.verdict if posture.verification else "NOT_EVALUATED"
 
     return f"""<svg width="720" height="200" viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg">
   <defs>
@@ -42,10 +41,10 @@ def generate_svg_architecture(posture: ProjectPosture) -> str:
   <text x="300" y="95" fill="#F0F4F8" font-family="sans-serif" font-size="11" font-weight="bold" text-anchor="middle">02. STRATEGY</text>
   <text x="300" y="115" fill="#00FFCC" font-family="monospace" font-size="9" text-anchor="middle">{cand_name[:14]}...</text>
 
-  <!-- Node 3: Micro-Sandbox -->
+  <!-- Node 3: Trusted Restricted Execution -->
   <rect x="460" y="60" width="120" height="80" rx="6" fill="#131822" stroke="#00FFCC" stroke-width="1.5"/>
-  <text x="520" y="95" fill="#F0F4F8" font-family="sans-serif" font-size="11" font-weight="bold" text-anchor="middle">03. SANDBOX</text>
-  <text x="520" y="115" fill="#10B981" font-family="monospace" font-size="9" text-anchor="middle">AST Fuzz ({verdict})</text>
+  <text x="520" y="95" fill="#F0F4F8" font-family="sans-serif" font-size="11" font-weight="bold" text-anchor="middle">03. RESTRICTED</text>
+  <text x="520" y="115" fill="#10B981" font-family="monospace" font-size="9" text-anchor="middle">Coverage ({verdict})</text>
 
   <!-- Node 4: Final Deliverable -->
   <circle cx="660" cy="100" r="28" fill="url(#tealGrad)"/>
@@ -58,7 +57,6 @@ def export_full_html_dossier(posture: ProjectPosture) -> str:
     svg = generate_svg_architecture(posture)
     decomp = posture.decomposition
     cand = posture.selected_candidate
-    ver = posture.verification
     out = posture.final_output
 
     return f"""<!DOCTYPE html>
@@ -82,7 +80,7 @@ def export_full_html_dossier(posture: ProjectPosture) -> str:
   <div class="card">
     <h3>Executive Objective</h3>
     <p>{posture.objective}</p>
-    <p><strong>Domain:</strong> <span class="mono">{decomp.domain if decomp else 'general'}</span></p>
+    <p><strong>Domain:</strong> <span class="mono">{decomp.domain if decomp else "general"}</span></p>
   </div>
 
   <h2>Autonomous Architectural Graph</h2>
@@ -95,17 +93,17 @@ def export_full_html_dossier(posture: ProjectPosture) -> str:
 
   <h2>Selected Strategy Candidate</h2>
   <div class="card">
-    <h3>{cand.pathway_name if cand else 'N/A'} <span class="badge">{cand.paradigm_type if cand else 'N/A'}</span></h3>
-    <p><strong>Hypothesis:</strong> {cand.hypothesis if cand else 'N/A'}</p>
+    <h3>{cand.pathway_name if cand else "N/A"} <span class="badge">{cand.paradigm_type if cand else "N/A"}</span></h3>
+    <p><strong>Hypothesis:</strong> {cand.hypothesis if cand else "N/A"}</p>
     <p><strong>Feasibility:</strong> {cand.feasibility_score if cand else 0.0:.2f} | <strong>Divergence:</strong> {cand.divergence_score if cand else 0.0:.2f}</p>
   </div>
 
   <h2>Empirical Falsification Hypothesis (H0)</h2>
   <div class="card" style="background: #fffbeb; border-color: #fef3c7;">
-    <p><strong>Null Hypothesis:</strong> {out.get('null_hypothesis_h0', 'H0 verified') if out else 'H0 verified'}</p>
+    <p><strong>Null Hypothesis:</strong> {out.get("null_hypothesis_h0", "NOT_EVALUATED: no H0 recorded") if out else "NOT_EVALUATED: no H0 recorded"}</p>
   </div>
 
   <h2>Cryptographic Integrity Signature</h2>
-  <p><strong>SHA-256 Audit Hash:</strong> <span class="mono">{out.get('audit_sha256', 'N/A') if out else 'N/A'}</span></p>
+  <p><strong>SHA-256 Audit Hash:</strong> <span class="mono">{out.get("audit_sha256", "N/A") if out else "N/A"}</span></p>
 </body>
 </html>"""

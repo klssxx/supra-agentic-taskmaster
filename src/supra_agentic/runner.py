@@ -1,4 +1,5 @@
 """SUPRA Taskmaster runner with deterministic safety and optional model help."""
+
 from __future__ import annotations
 
 import logging
@@ -7,13 +8,13 @@ import time
 from typing import Any
 
 from .agent import TaskmasterAgent, create_taskmaster_agent
-from .models import ProjectPosture, TaskmasterStage
+from .models import ProjectPosture
 from .providers import AgentProvider, ProviderError
 from .state import state_manager
 from .tools import (
     decompose_objective,
-    execute_sandbox_action,
     record_checkpoint,
+    restricted_python_executor,
     synthesize_strategy,
     verify_solution,
 )
@@ -85,7 +86,10 @@ class TaskmasterRunner:
                 "yes",
                 "on",
             }
-        model_assistance: dict[str, Any] = {"enabled": bool(use_model), "provider": self.provider_name}
+        model_assistance: dict[str, Any] = {
+            "enabled": bool(use_model),
+            "provider": self.provider_name,
+        }
         if use_model:
             try:
                 response = self.generate(model_prompt or clean_obj)
@@ -124,21 +128,26 @@ class TaskmasterRunner:
                 allow_disruptive=allow_disruptive,
             )
 
-            # Stage 4: Verify Invariants & Sandbox with Self-Correction
+            # Stage 4: verify invariants and run trusted restricted check
             logger.info(f"[{pid}] Executing Tool 3: verify_solution")
             verify_solution(project_id=pid)
 
-            # Stage 4b: Sandbox Execution (SANDBOX_VERIFIED)
-            logger.info(f"[{pid}] Executing Tool 4: execute_sandbox_action")
-            sb_res = execute_sandbox_action(project_id=pid, fuzz_iterations=5)
+            # Stage 4b: trusted restricted execution (no process isolation)
+            logger.info(f"[{pid}] Executing Tool 4: restricted_python_executor")
+            execution_res = restricted_python_executor(project_id=pid, fuzz_iterations=5)
 
-            # Self-Correction Loop: If sandbox fails, re-synthesize with error feedback
+            # Self-correct if the internal restricted check fails.
             retries = 0
-            while not sb_res["sandbox_result"]["passed"] and retries < max_retries:
+            while (
+                not execution_res["restricted_execution_result"]["passed"] and retries < max_retries
+            ):
                 retries += 1
-                err_log = sb_res["sandbox_result"]["output_log"]
-                logger.warning(f"[{pid}] Sandbox check failed: '{err_log}'. Initiating self-correction loop #{retries}...")
-                
+                err_log = execution_res["restricted_execution_result"]["output_log"]
+                logger.warning(
+                    f"[{pid}] Restricted execution failed: '{err_log}'. "
+                    f"Initiating self-correction loop #{retries}..."
+                )
+
                 # Re-synthesize strategy with feedback
                 synthesize_strategy(
                     project_id=pid,
@@ -146,10 +155,10 @@ class TaskmasterRunner:
                     allow_disruptive=True,
                     error_feedback=err_log,
                 )
-                
-                # Re-verify and re-execute sandbox
+
+                # Re-verify and re-run the trusted internal check.
                 verify_solution(project_id=pid)
-                sb_res = execute_sandbox_action(project_id=pid, fuzz_iterations=5)
+                execution_res = restricted_python_executor(project_id=pid, fuzz_iterations=5)
 
             # Stage 5: Final Checkpoint & Deliverable Ledger (COMPLETED)
             logger.info(f"[{pid}] Executing Tool 5: record_checkpoint")

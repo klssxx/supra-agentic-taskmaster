@@ -1,4 +1,5 @@
 """FastAPI backend for the provider-neutral SUPRA Agentic Taskmaster."""
+
 from __future__ import annotations
 
 import json
@@ -6,8 +7,9 @@ import logging
 import os
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -15,13 +17,31 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .dossier import export_full_html_dossier
 from .mcp_handler import handle_mcp_jsonrpc_request
-from .models import ProjectPosture
 from .providers import ProviderError, get_provider, provider_names
-from .runner import TaskmasterRunner
-from .runner import taskmaster_runner
+from .runner import TaskmasterRunner, taskmaster_runner
 from .state import state_manager
 
 logger = logging.getLogger("supra_agentic.service")
+MAX_MCP_BODY_SIZE = 8 * 1024 * 1024
+
+
+def _parse_cors_origins(raw: str | None) -> list[str]:
+    """Parse explicit CORS origins; absent configuration remains closed."""
+    if raw is None or not raw.strip():
+        return []
+    origins = [item.strip() for item in raw.split(",")]
+    if any(not item for item in origins):
+        raise RuntimeError("SUPRA_CORS_ORIGINS contains an empty origin")
+    for origin in origins:
+        if origin == "*":
+            continue
+        parsed = urlparse(origin)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise RuntimeError(f"Invalid CORS origin: {origin!r}")
+    return origins
+
+
+CORS_ORIGINS = _parse_cors_origins(os.getenv("SUPRA_CORS_ORIGINS"))
 
 app = FastAPI(
     title="SUPRA Agentic Taskmaster",
@@ -29,14 +49,15 @@ app = FastAPI(
     description="Provider-neutral autonomous task decomposition, verification, and evidence generation.",
 )
 
-# Enable CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Enable CORS - configurable, default restrictive (empty list = no CORS)
+if CORS_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=CORS_ORIGINS,
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 STATIC_DIR = Path(__file__).parent / "web"
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
@@ -45,13 +66,23 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 class CreateProjectRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    objective: str = Field(..., min_length=5, max_length=2000, description="The challenge or problem to solve.")
+    objective: str = Field(
+        ..., min_length=5, max_length=2000, description="The challenge or problem to solve."
+    )
     domain: str = Field("general", max_length=100, description="Target problem domain.")
     project_id: str | None = Field(None, max_length=64, description="Optional custom project ID.")
-    allow_disruptive: bool = Field(True, description="Whether to include disruptive divergent pathways.")
-    provider: str | None = Field(None, max_length=64, description="Provider name, or SUPRA_PROVIDER when omitted.")
-    model: str | None = Field(None, max_length=200, description="Provider model ID; auto-discovered when omitted.")
-    use_model: bool = Field(False, description="Add optional model assistance without replacing deterministic gates.")
+    allow_disruptive: bool = Field(
+        True, description="Whether to include disruptive divergent pathways."
+    )
+    provider: str | None = Field(
+        None, max_length=64, description="Provider name, or SUPRA_PROVIDER when omitted."
+    )
+    model: str | None = Field(
+        None, max_length=200, description="Provider model ID; auto-discovered when omitted."
+    )
+    use_model: bool = Field(
+        False, description="Add optional model assistance without replacing deterministic gates."
+    )
 
 
 class GenerateRequest(BaseModel):
@@ -71,6 +102,16 @@ def healthcheck() -> dict[str, Any]:
         "service": "supra-agentic-taskmaster",
         "version": "1.0.0",
         "provider": taskmaster_runner.provider_metadata(),
+        "storage": {
+            "mode": state_manager.storage_mode,
+            "durability": (
+                "instance-only"
+                if state_manager.storage_mode == "INSTANCE_EPHEMERAL"
+                else "depends-on-configured-filesystem"
+                if state_manager.storage_mode == "CONFIGURED_FILESYSTEM"
+                else "local-host"
+            ),
+        },
         "webmcp_enabled": True,
     }
 
@@ -95,17 +136,29 @@ def list_provider_options() -> dict[str, Any]:
 
 
 @app.get("/", response_class=HTMLResponse, tags=["UI"])
-def serve_ui() -> FileResponse:
+def serve_ui() -> Response:
     """Serve the primary Web UI."""
     index_file = STATIC_DIR / "index.html"
     if not index_file.exists():
-        return HTMLResponse("<h1>SUPRA Agentic Taskmaster API Online</h1><p>Static UI building...</p>")
+        return HTMLResponse(
+            "<h1>SUPRA Agentic Taskmaster API Online</h1><p>Static UI building...</p>"
+        )
     return FileResponse(str(index_file))
 
 
-@app.post("/api/v1/projects", status_code=status.HTTP_201_CREATED, tags=["Taskmaster"])
-def create_and_run_project(req: CreateProjectRequest) -> dict[str, Any]:
-    """Execute the five-stage workflow with deterministic gates."""
+@app.post(
+    "/api/v1/projects",
+    status_code=status.HTTP_201_CREATED,
+    response_model=None,
+    tags=["Taskmaster"],
+)
+def create_and_run_project(req: CreateProjectRequest) -> dict[str, Any] | Response:
+    """Execute the five-stage workflow with deterministic gates.
+
+    Returns appropriate HTTP status based on pipeline execution result:
+    - 201 Created + {"status": "success"} on successful completion
+    - 500 Internal Server Error + {"status": "error"} on pipeline failure
+    """
     try:
         runner = TaskmasterRunner(provider_name=req.provider, model_name=req.model)
         posture = runner.run_golden_path(
@@ -115,15 +168,44 @@ def create_and_run_project(req: CreateProjectRequest) -> dict[str, Any]:
             allow_disruptive=req.allow_disruptive,
             use_model=req.use_model,
         )
+
+        # Check if pipeline actually succeeded
+        if posture.stage.value == "FAILED" or (
+            posture.verification and posture.verification.verdict == "FAIL"
+        ):
+            return Response(
+                content=json.dumps(
+                    {
+                        "status": "error",
+                        "project_id": posture.project_id,
+                        "stage": posture.stage.value,
+                        "error": posture.error_message or "Pipeline execution failed",
+                        "verification": posture.verification.model_dump()
+                        if posture.verification
+                        else None,
+                    }
+                ),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                media_type="application/json",
+            )
+
         return {
             "status": "success",
             "project_id": posture.project_id,
             "stage": posture.stage.value,
+            "verification_verdict": (
+                posture.verification.verdict if posture.verification else "NOT_EVALUATED"
+            ),
+            "verification_scope": (
+                posture.verification.verification_scope
+                if posture.verification
+                else "NOT_EVALUATED"
+            ),
             "posture": posture.model_dump(),
         }
     except Exception as exc:
-        logger.error(f"Execution error: {exc}")
-        raise HTTPException(status_code=500, detail=str(exc))
+        logger.error("Project execution failed (%s)", type(exc).__name__)
+        raise HTTPException(status_code=500, detail="Project execution failed.") from exc
 
 
 @app.post("/api/v1/generate", tags=["Providers"])
@@ -209,11 +291,39 @@ def example_quick_run() -> dict[str, Any]:
 
 @app.post("/api/v1/mcp", tags=["WebMCP"])
 async def mcp_jsonrpc_endpoint(request: Request) -> dict[str, Any]:
-    """Native WebMCP JSON-RPC 2.0 Protocol Handler."""
+    """Native WebMCP JSON-RPC 2.0 Protocol Handler.
+
+    Includes body size limit (8 MiB) and basic JSON-RPC argument validation.
+    """
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            declared_size = int(content_length)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid Content-Length header") from exc
+        if declared_size < 0:
+            raise HTTPException(status_code=400, detail="Invalid Content-Length header")
+        if declared_size > MAX_MCP_BODY_SIZE:
+            raise HTTPException(status_code=413, detail="Request body too large (max 8 MiB)")
+
+    body = await request.body()
+    if len(body) > MAX_MCP_BODY_SIZE:
+        raise HTTPException(status_code=413, detail="Request body too large (max 8 MiB)")
     try:
-        payload = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON payload.")
+        payload = json.loads(body)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload.") from exc
+
+    # Basic JSON-RPC 2.0 validation
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="JSON-RPC payload must be an object")
+    if payload.get("jsonrpc") != "2.0":
+        raise HTTPException(status_code=400, detail="Only JSON-RPC 2.0 is supported")
+    if "method" not in payload:
+        raise HTTPException(status_code=400, detail="Missing 'method' in JSON-RPC request")
+    if "id" not in payload:
+        raise HTTPException(status_code=400, detail="Missing 'id' in JSON-RPC request")
+
     return handle_mcp_jsonrpc_request(payload)
 
 
@@ -250,25 +360,29 @@ def export_technical_dossier(project_id: str) -> dict[str, Any]:
         for mut in decomp.mutable_assumptions:
             md_lines.append(f"- [ ] ~{mut}~")
 
-    md_lines.extend([
-        "",
-        "## 2. Selected Strategy Pathway",
-        f"- **Pathway:** {cand.pathway_name if cand else 'N/A'}",
-        f"- **Paradigm:** `{cand.paradigm_type if cand else 'N/A'}`",
-        f"- **Hypothesis:** {cand.hypothesis if cand else 'N/A'}",
-        f"- **Feasibility:** {cand.feasibility_score if cand else 0.0:.2f} | **Divergence:** {cand.divergence_score if cand else 0.0:.2f}",
-        "",
-        "## 3. Verification & Sandbox Telemetry",
-        f"- **Verdict:** `{ver.verdict if ver else 'N/A'}` (Confidence: {ver.confidence_score if ver else 0.0:.2f})",
-        f"- **Rationale:** {ver.rationale if ver else 'N/A'}",
-        "",
-        "## 4. Empirical Falsification (H0)",
-        f"- **Null Hypothesis:** `{out.get('null_hypothesis_h0', 'N/A') if out else 'N/A'}`",
-        "",
-        "## 5. Checkpoints Timeline",
-    ])
+    md_lines.extend(
+        [
+            "",
+            "## 2. Selected Strategy Pathway",
+            f"- **Pathway:** {cand.pathway_name if cand else 'N/A'}",
+            f"- **Paradigm:** `{cand.paradigm_type if cand else 'N/A'}`",
+            f"- **Hypothesis:** {cand.hypothesis if cand else 'N/A'}",
+            f"- **Feasibility:** {cand.feasibility_score if cand else 0.0:.2f} | **Divergence:** {cand.divergence_score if cand else 0.0:.2f}",
+            "",
+            "## 3. Verification & Restricted Execution Telemetry",
+            f"- **Verdict:** `{ver.verdict if ver else 'N/A'}` (Confidence: {ver.confidence_score if ver else 0.0:.2f})",
+            f"- **Rationale:** {ver.rationale if ver else 'N/A'}",
+            "",
+            "## 4. Empirical Falsification (H0)",
+            f"- **Null Hypothesis:** `{out.get('null_hypothesis_h0', 'N/A') if out else 'N/A'}`",
+            "",
+            "## 5. Checkpoints Timeline",
+        ]
+    )
     for chk in posture.checkpoints:
-        md_lines.append(f"- **[{chk.stage.value}]** `{chk.actor}`: {chk.title} — *{chk.evidence_summary}*")
+        md_lines.append(
+            f"- **[{chk.stage.value}]** `{chk.actor}`: {chk.title} — *{chk.evidence_summary}*"
+        )
 
     return {
         "status": "success",

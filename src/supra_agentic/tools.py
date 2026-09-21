@@ -1,20 +1,22 @@
 """Provider-neutral tools for the SUPRA Agentic Taskmaster.
 
-Provides 5 typed, executable tool callables wrapped with state persistence,
-multi-candidate sandbox verification, self-correction feedback, and audit trail logging.
+Provides typed tool callables with state persistence, trusted restricted
+execution, self-correction feedback, and audit trail logging.
 """
+
 from __future__ import annotations
 
 import ast
+import contextlib
 import hashlib
+import io
 import json
 import logging
 import time
 from typing import Any
 
 from .models import (
-    CheckpointRecord,
-    SandboxExecutionResult,
+    RestrictedExecutionResult,
     StrategyCandidate,
     StructuredDecomposition,
     Subtask,
@@ -81,9 +83,12 @@ def decompose_objective(
             status="PENDING",
         ),
         Subtask(
-            title="Execute Sandbox Verification & Self-Correction",
-            description="Verify hypotheses and auto-correct in isolated execution sandbox.",
-            stage_target=TaskmasterStage.SANDBOX_VERIFIED,
+            title="Execute Trusted Restricted Verification",
+            description=(
+                "Run the internal synthetic check with restricted builtins; "
+                "this is not process isolation and does not accept untrusted code."
+            ),
+            stage_target=TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED,
             status="PENDING",
         ),
     ]
@@ -121,7 +126,7 @@ def synthesize_strategy(
         project_id: The unique project identifier.
         pathways_count: Number of competing candidate strategies to formulate (default: 3).
         allow_disruptive: Whether to include high-divergence disruptive pathways.
-        error_feedback: Optional error context from a prior failed sandbox run for self-correction.
+        error_feedback: Optional error context from a prior failed restricted check.
 
     Returns:
         Formulated candidates and the automatically selected best pathway.
@@ -140,7 +145,7 @@ def synthesize_strategy(
             paradigm_type="DISRUPTIVE",
             hypothesis=f"Adapted strategy incorporating feedback '{error_feedback[:60]}' enforces active rollback and bounds.",
             action_plan=[
-                "Isolate failing boundary identified in prior sandbox pass",
+                "Isolate failing boundary identified in prior restricted check",
                 "Apply asynchronous non-blocking fallback",
                 "Re-verify invariants under strict containment",
             ],
@@ -193,7 +198,7 @@ def synthesize_strategy(
                 )
             )
 
-    candidates = candidates[:max(1, pathways_count)]
+    candidates = candidates[: max(1, pathways_count)]
     updated = state_manager.add_candidates(project_id, candidates, select_best=True)
 
     return {
@@ -201,7 +206,9 @@ def synthesize_strategy(
         "project_id": project_id,
         "stage": updated.stage.value,
         "candidates_count": len(updated.candidates),
-        "selected_candidate": updated.selected_candidate.model_dump() if updated.selected_candidate else None,
+        "selected_candidate": updated.selected_candidate.model_dump()
+        if updated.selected_candidate
+        else None,
         "candidates": [c.model_dump() for c in updated.candidates],
         "self_correction_applied": bool(error_feedback),
     }
@@ -214,7 +221,7 @@ def verify_solution(
     project_id: str,
     candidate_id: str | None = None,
 ) -> dict[str, Any]:
-    """Verify the selected candidate strategy against system invariants and safety policies.
+    """Check textual coverage of mapped invariants in the selected candidate strategy.
 
     Args:
         project_id: The unique project identifier.
@@ -239,7 +246,11 @@ def verify_solution(
     if not target_candidate:
         raise ValueError("No candidate available for verification.")
 
-    invariants = posture.decomposition.invariants if posture.decomposition else ["System integrity preserved"]
+    invariants = (
+        posture.decomposition.invariants
+        if posture.decomposition
+        else ["System integrity preserved"]
+    )
 
     # HONEST VERIFICATION (auditoría hallazgo 1): NO se puede declarar PASS sin
     # ejecutar evidencia. Se requiere una prueba vinculada al CANDIDATO EXACTO y
@@ -275,10 +286,11 @@ def verify_solution(
             len([e for e in evaluated if e["status"] == "PASS"]) / len(invariants), 3
         )
         rationale = (
-            f"Evidencia ejecutada sobre '{target_candidate.pathway_name}': "
-            f"{len([e for e in evaluated if e['status']=='PASS'])}/{len(invariants)} "
-            f"invariantes con prueba PASS, {len(failures)} FAIL, "
-            f"{len(not_evaluated)} NOT_EVALUATED."
+            f"Cobertura textual heurística sobre '{target_candidate.pathway_name}': "
+            f"{len([e for e in evaluated if e['status'] == 'PASS'])}/{len(invariants)} "
+            f"invariantes con cobertura PASS, {len(failures)} FAIL, "
+            f"{len(not_evaluated)} NOT_EVALUATED. "
+            "No equivale a validación del sistema desplegado."
         )
 
     report = VerificationReport(
@@ -288,6 +300,8 @@ def verify_solution(
         vulnerabilities_detected=[f["invariant"] for f in failures],
         confidence_score=confidence,
         verdict=verdict,
+        verification_scope="STRATEGY_TEXT_COVERAGE_ONLY",
+        confidence_semantics="fraction_of_declared_invariants_with_textual_coverage",
         rationale=rationale,
         evidence=evidence,
     )
@@ -327,21 +341,27 @@ def _run_invariant_evidence(
         inv = invariant.casefold()
         check = _invariant_check(inv)
         if check is None:
-            evidence.append({
-                "invariant": invariant,
-                "status": "NOT_EVALUATED",
-                "test": "sin prueba ejecutable vinculada al candidato",
-                "counterexample": "",
-            })
+            evidence.append(
+                {
+                    "invariant": invariant,
+                    "status": "NOT_EVALUATED",
+                    "test": "sin comprobación textual mapeada para este invariante",
+                    "counterexample": "",
+                    "evidence_scope": "STRATEGY_TEXT_COVERAGE_ONLY",
+                }
+            )
             continue
         keyword, counterexample = check
         covered = keyword in artifacts
-        evidence.append({
-            "invariant": invariant,
-            "status": "PASS" if covered else "FAIL",
-            "test": f"el plan/hipótesis del candidato cubre '{keyword}'",
-            "counterexample": "" if covered else counterexample,
-        })
+        evidence.append(
+            {
+                "invariant": invariant,
+                "status": "PASS" if covered else "FAIL",
+                "test": f"el texto del plan/hipótesis contiene cobertura para '{keyword}'",
+                "counterexample": "" if covered else counterexample,
+                "evidence_scope": "STRATEGY_TEXT_COVERAGE_ONLY",
+            }
+        )
     return evidence
 
 
@@ -352,16 +372,31 @@ def _invariant_check(invariant_casefold: str) -> tuple[str, str] | None:
     ejecutable: ese invariante queda NOT_EVALUATED (honesto).
     """
     checks: list[tuple[tuple[str, ...], str, str]] = [
-        (("rollback", "reversib", "recover", "recuper"),
-         "rollback", "cambio irreversible sin punto de restauración"),
-        (("containment", "conten", "aisl", "isolat", "sandbox", "bound"),
-         "containment", "efecto fuera del perímetro designado"),
-        (("integrity", "integridad", "memory", "memoria"),
-         "integrity", "escritura fuera de la memoria autorizada"),
-        (("reproducib", "determin", "seed", "semilla"),
-         "determin", "dos ejecuciones con la misma semilla divergen"),
-        (("audit", "ledger", "hash", "trazab", "traceab"),
-         "audit", "cambio de estado sin registro encadenado"),
+        (
+            ("rollback", "reversib", "recover", "recuper"),
+            "rollback",
+            "cambio irreversible sin punto de restauración",
+        ),
+        (
+            ("containment", "conten", "aisl", "isolat", "sandbox", "bound"),
+            "containment",
+            "efecto fuera del perímetro designado",
+        ),
+        (
+            ("integrity", "integridad", "memory", "memoria"),
+            "integrity",
+            "escritura fuera de la memoria autorizada",
+        ),
+        (
+            ("reproducib", "determin", "seed", "semilla"),
+            "determin",
+            "dos ejecuciones con la misma semilla divergen",
+        ),
+        (
+            ("audit", "ledger", "hash", "trazab", "traceab"),
+            "audit",
+            "cambio de estado sin registro encadenado",
+        ),
     ]
     for tokens, keyword, counterexample in checks:
         if any(tok in invariant_casefold for tok in tokens):
@@ -370,75 +405,139 @@ def _invariant_check(invariant_casefold: str) -> tuple[str, str] | None:
 
 
 # ---------------------------------------------------------------------------
-# Tool 4: execute_sandbox_action
+# Tool 4: trusted restricted Python execution (NOT a security sandbox)
 # ---------------------------------------------------------------------------
-def execute_sandbox_action(
+MAX_FUZZ_ITERATIONS = 100
+MAX_CODE_SIZE = 64 * 1024
+MAX_OUTPUT_SIZE = 64 * 1024
+
+
+class _BoundedTextIO(io.StringIO):
+    def write(self, value: str) -> int:
+        if self.tell() + len(value) > MAX_OUTPUT_SIZE:
+            raise RuntimeError(f"Output limit exceeded ({MAX_OUTPUT_SIZE} bytes)")
+        return super().write(value)
+
+
+def _execute_trusted_code(parsed: ast.Module, fuzz_iterations: int) -> str:
+    """Execute already-authorized internal code in-process with bounded output."""
+    output = _BoundedTextIO()
+    safe_globals: dict[str, Any] = {
+        "__builtins__": {
+            "bool": bool,
+            "dict": dict,
+            "int": int,
+            "len": len,
+            "list": list,
+            "print": print,
+            "range": range,
+            "RuntimeError": RuntimeError,
+            "str": str,
+            "sum": sum,
+            "tuple": tuple,
+        }
+    }
+    with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+        for _ in range(fuzz_iterations):
+            exec(compile(parsed, "<restricted-internal>", "exec"), safe_globals, {})
+    return output.getvalue()
+
+
+def restricted_python_executor(
     project_id: str,
     candidate_id: str | None = None,
     code_snippet: str | None = None,
     fuzz_iterations: int = 5,
+    *,
+    trusted_internal: bool = False,
+    mechanism_version: str | None = None,
+    claim_id: str | None = None,
+    protocol_version: str | None = None,
 ) -> dict[str, Any]:
-    """Execute a safe, isolated simulation or AST verification in the local micro-sandbox.
+    """Run a bounded in-process check for trusted internal code only.
 
-    Args:
-        project_id: The unique project identifier.
-        candidate_id: Optional candidate context.
-        code_snippet: Optional Python code snippet to validate (defaults to standard synthetic test).
-        fuzz_iterations: Number of synthetic boundary fuzz iterations to run (default: 5).
-
-    Returns:
-        Sandbox execution telemetry, pass/fail assertion log, and containment verification.
+    This is not a security sandbox, has no OS/process isolation, and must not
+    receive arbitrary remote or user-supplied Python. Any explicit source code
+    requires the caller to opt into the trusted internal contract.
     """
-    start_time = time.monotonic()
+    if not 1 <= fuzz_iterations <= MAX_FUZZ_ITERATIONS:
+        raise ValueError(f"fuzz_iterations must satisfy 1 <= value <= {MAX_FUZZ_ITERATIONS}")
+    if code_snippet is not None and not trusted_internal:
+        raise PermissionError(
+            "Explicit Python source requires trusted_internal=True; untrusted code is rejected."
+        )
+
+    posture_before = state_manager.get_project(project_id)
+    selected_candidate_id = (
+        posture_before.selected_candidate.candidate_id
+        if posture_before and posture_before.selected_candidate
+        else None
+    )
+    identity_bound = bool(
+        code_snippet is not None
+        and trusted_internal
+        and selected_candidate_id
+        and candidate_id == selected_candidate_id
+        and mechanism_version
+        and claim_id
+        and protocol_version
+    )
+
     code = code_snippet or (
         "def verify_agent_invariant(input_val):\n"
         "    assert input_val is not None, 'Input must not be None'\n"
         "    return {'status': 'PASS', 'echo': input_val}\n"
         "result = verify_agent_invariant('SUPRA_TASKMASTER_OK')\n"
     )
+    if len(code.encode("utf-8")) > MAX_CODE_SIZE:
+        raise ValueError(f"Code exceeds MAX_CODE_SIZE ({MAX_CODE_SIZE} bytes)")
 
-    # 1. AST Validation
+    start_time = time.monotonic()
     try:
         parsed = ast.parse(code)
-        for node in ast.walk(parsed):
-            if isinstance(node, (ast.Import, ast.ImportFrom)):
-                for name in node.names:
-                    if name.name in {"subprocess", "os", "sys", "shutil", "socket", "pty"}:
-                        raise PermissionError(f"Restricted module '{name.name}' is prohibited in micro-sandbox.")
-        
-        # 2. Safe execution in isolated dictionary
-        safe_globals: dict[str, Any] = {"__builtins__": {"assert": True, "len": len, "range": range, "dict": dict, "str": str, "int": int}}
-        safe_locals: dict[str, Any] = {}
-        
-        # Run synthetic fuzz iterations
-        for i in range(fuzz_iterations):
-            exec(compile(parsed, "<sandbox>", "exec"), safe_globals, safe_locals)
-            
+        if any(isinstance(node, (ast.Import, ast.ImportFrom)) for node in ast.walk(parsed)):
+            raise PermissionError("Imports are not permitted in restricted internal execution.")
+        if any(isinstance(node, (ast.While, ast.AsyncFor)) for node in ast.walk(parsed)):
+            raise PermissionError("Unbounded loop constructs are not permitted.")
+        captured = _execute_trusted_code(parsed, fuzz_iterations)
         duration_ms = (time.monotonic() - start_time) * 1000
-
-        result = SandboxExecutionResult(
-            action_type="SYNTHETIC_CODE_FUZZ",
+        suffix = f" Captured {len(captured)} bytes." if captured else ""
+        result = RestrictedExecutionResult(
+            candidate_id=candidate_id,
+            mechanism_version=mechanism_version,
+            claim_id=claim_id,
+            protocol_version=protocol_version,
+            observed_result="PASS",
+            action_type="TRUSTED_RESTRICTED_PYTHON",
             passed=True,
-            output_log=f"AST parse verified cleanly. Passed {fuzz_iterations}/{fuzz_iterations} synthetic fuzz checks in {duration_ms:.2f}ms.",
+            identity_bound=identity_bound,
+            output_log=(
+                f"Restricted internal execution passed {fuzz_iterations}/"
+                f"{fuzz_iterations} iterations in {duration_ms:.2f}ms.{suffix}"
+            ),
             duration_ms=round(duration_ms, 2),
-            side_effects_contained=True,
         )
     except Exception as exc:
         duration_ms = (time.monotonic() - start_time) * 1000
-        result = SandboxExecutionResult(
-            action_type="SYNTHETIC_CODE_FUZZ",
+        result = RestrictedExecutionResult(
+            candidate_id=candidate_id,
+            mechanism_version=mechanism_version,
+            claim_id=claim_id,
+            protocol_version=protocol_version,
+            observed_result="FAIL",
+            action_type="TRUSTED_RESTRICTED_PYTHON",
             passed=False,
-            output_log=f"Sandbox execution rejected: {exc}",
+            identity_bound=identity_bound,
+            output_log=f"Restricted internal execution rejected: {exc}"[:MAX_OUTPUT_SIZE],
             duration_ms=round(duration_ms, 2),
-            side_effects_contained=True,
         )
 
-    posture = state_manager.record_sandbox_execution(project_id, result)
+    posture = state_manager.record_restricted_execution(project_id, result)
     return {
         "status": "success",
         "project_id": project_id,
         "stage": posture.stage.value,
-        "sandbox_result": result.model_dump(),
+        "restricted_execution_result": result.model_dump(),
     }
 
 
@@ -482,8 +581,33 @@ def record_checkpoint(
         "null_hypothesis_h0": h0_statement,
         "objective": posture.objective,
         "domain": posture.decomposition.domain if posture.decomposition else "general",
-        "selected_strategy": posture.selected_candidate.pathway_name if posture.selected_candidate else "Standard",
-        "verification_verdict": posture.verification.verdict if posture.verification else "PASS",
+        "selected_strategy": posture.selected_candidate.pathway_name
+        if posture.selected_candidate
+        else "Standard",
+        "verification_verdict": (
+            posture.verification.verdict if posture.verification else "NOT_EVALUATED"
+        ),
+        "verification_scope": (
+            posture.verification.verification_scope
+            if posture.verification
+            else "NOT_EVALUATED"
+        ),
+        "completion_scope": "WORKFLOW_TERMINAL_STATE_ONLY",
+        "restricted_execution": (
+            {
+                "passed": posture.restricted_execution_results[-1].passed,
+                "identity_bound": posture.restricted_execution_results[-1].identity_bound,
+                "result_scope": posture.restricted_execution_results[-1].result_scope,
+                "scientific_validation": False,
+            }
+            if posture.restricted_execution_results
+            else {
+                "passed": None,
+                "identity_bound": False,
+                "result_scope": "NOT_EXECUTED",
+                "scientific_validation": False,
+            }
+        ),
         "checkpoints_count": len(posture.checkpoints) + 1,
         "timestamp": time.time(),
     }
@@ -509,6 +633,6 @@ SUPRA_TOOLS = [
     decompose_objective,
     synthesize_strategy,
     verify_solution,
-    execute_sandbox_action,
+    restricted_python_executor,
     record_checkpoint,
 ]

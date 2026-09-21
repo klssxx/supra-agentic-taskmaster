@@ -1,8 +1,16 @@
-"""Thread-safe, In-Memory & File-Backed Project State Manager."""
+"""Thread-safe file-backed project state manager.
+
+Filesystem storage is classified honestly as local, configured, or instance
+ephemeral. A configured path may be durable only when the deployment mounts
+a durable external backend there.
+"""
+
 from __future__ import annotations
 
 import json
 import logging
+import os
+import tempfile
 import threading
 import time
 import uuid
@@ -12,7 +20,7 @@ from typing import Any
 from .models import (
     CheckpointRecord,
     ProjectPosture,
-    SandboxExecutionResult,
+    RestrictedExecutionResult,
     StrategyCandidate,
     StructuredDecomposition,
     TaskmasterStage,
@@ -22,13 +30,30 @@ from .models import (
 logger = logging.getLogger("supra_agentic.state")
 
 
+def _get_storage_configuration(
+    explicit: Path | str | None = None,
+) -> tuple[Path, str]:
+    """Resolve filesystem location without claiming unverified durability."""
+    if explicit is not None:
+        return Path(explicit), "CONFIGURED_FILESYSTEM"
+    for env_var in ("SUPRA_STORAGE_DIR", "CLOUD_RUN_PERSISTENT_DIR"):
+        if path := os.getenv(env_var):
+            return Path(path), "CONFIGURED_FILESYSTEM"
+    if os.getenv("K_SERVICE"):
+        return Path(tempfile.gettempdir()) / "supra-agentic", "INSTANCE_EPHEMERAL"
+    if os.name == "nt":
+        root = Path(os.getenv("LOCALAPPDATA", tempfile.gettempdir()))
+        return root / "SUPRA-Agentic", "LOCAL_FILESYSTEM"
+    return Path.home() / ".supra" / "projects", "LOCAL_FILESYSTEM"
+
+
 class ProjectStateManager:
-    """Manages project lifecycles with thread-safe locking and state persistence."""
+    """Manage project lifecycles with locked filesystem persistence."""
 
     def __init__(self, storage_dir: Path | str | None = None) -> None:
         self._lock = threading.RLock()
         self._projects: dict[str, ProjectPosture] = {}
-        self.storage_dir = Path(storage_dir) if storage_dir else Path("data/projects")
+        self.storage_dir, self.storage_mode = _get_storage_configuration(storage_dir)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
 
     def create_project(self, objective: str, project_id: str | None = None) -> ProjectPosture:
@@ -72,7 +97,9 @@ class ProjectStateManager:
                     logger.error(f"Failed to load project {project_id} from disk: {exc}")
             return None
 
-    def update_decomposition(self, project_id: str, decomp: StructuredDecomposition) -> ProjectPosture:
+    def update_decomposition(
+        self, project_id: str, decomp: StructuredDecomposition
+    ) -> ProjectPosture:
         """Store decomposition and advance stage to STRUCTURED."""
         with self._lock:
             p = self._get_required_project(project_id)
@@ -90,14 +117,18 @@ class ProjectStateManager:
             self._persist_project(project_id)
             return p
 
-    def add_candidates(self, project_id: str, candidates: list[StrategyCandidate], select_best: bool = True) -> ProjectPosture:
+    def add_candidates(
+        self, project_id: str, candidates: list[StrategyCandidate], select_best: bool = True
+    ) -> ProjectPosture:
         """Store strategy candidates and advance stage to STRATIFIED."""
         with self._lock:
             p = self._get_required_project(project_id)
             p.candidates = candidates
             if select_best and candidates:
                 # Select candidate with highest combined feasibility + divergence score
-                best = max(candidates, key=lambda c: (c.feasibility_score * 0.6 + c.divergence_score * 0.4))
+                best = max(
+                    candidates, key=lambda c: c.feasibility_score * 0.6 + c.divergence_score * 0.4
+                )
                 best.is_selected = True
                 p.selected_candidate = best
             p.stage = TaskmasterStage.STRATIFIED
@@ -131,27 +162,33 @@ class ProjectStateManager:
             self._persist_project(project_id)
             return p
 
-    def record_sandbox_execution(self, project_id: str, result: SandboxExecutionResult) -> ProjectPosture:
-        """Record sandbox execution and advance to SANDBOX_VERIFIED."""
+    def record_restricted_execution(
+        self, project_id: str, result: RestrictedExecutionResult
+    ) -> ProjectPosture:
+        """Record trusted restricted execution without claiming process isolation."""
         with self._lock:
             p = self._get_required_project(project_id)
-            p.sandbox_results.append(result)
-            if result.passed:
-                p.stage = TaskmasterStage.SANDBOX_VERIFIED
+            p.restricted_execution_results.append(result)
+            if result.passed and result.identity_bound:
+                p.stage = TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED
             p.updated_at = time.time()
             p.checkpoints.append(
                 CheckpointRecord(
                     stage=p.stage,
-                    title="Sandbox Execution",
-                    evidence_summary=f"Executed {result.action_type} in {result.duration_ms:.1f}ms. Passed: {result.passed}.",
-                    actor="agent:supra:sandbox",
+                    title="Trusted Restricted Execution",
+                    evidence_summary=(
+                        f"Executed {result.action_type} in {result.duration_ms:.1f}ms. "
+                        f"Passed: {result.passed}. Identity-bound: {result.identity_bound}. "
+                        "Scope: RESTRICTED_EXECUTION_ONLY. Process isolated: False."
+                    ),
+                    actor="agent:supra:restricted-executor",
                 )
             )
             self._persist_project(project_id)
             return p
 
     def complete_project(self, project_id: str, final_output: dict[str, Any]) -> ProjectPosture:
-        """Mark project as COMPLETED with final verifiable deliverable."""
+        """Mark the workflow as terminal without implying scientific validation."""
         with self._lock:
             p = self._get_required_project(project_id)
             p.final_output = final_output
@@ -161,7 +198,11 @@ class ProjectStateManager:
                 CheckpointRecord(
                     stage=TaskmasterStage.COMPLETED,
                     title="Taskmaster Mission Complete",
-                    evidence_summary="All 5 stages completed autonomously with verifiable proof and telemetry.",
+                    evidence_summary=(
+                        "Workflow reached its terminal checkpoint. Verification and "
+                        "restricted-execution scopes remain exactly as recorded; "
+                        "COMPLETED does not imply scientific validation."
+                    ),
                     actor="agent:supra:coordinator",
                 )
             )
@@ -205,13 +246,23 @@ class ProjectStateManager:
         return p
 
     def _persist_project(self, project_id: str) -> None:
+        """Persist project to disk with proper error handling (B-6 fix)."""
         p = self._projects.get(project_id)
-        if p:
-            try:
-                p_file = self.storage_dir / f"{project_id}.json"
-                p_file.write_text(p.model_dump_json(indent=2), encoding="utf-8")
-            except Exception as exc:
-                logger.error(f"Failed to persist project {project_id}: {exc}")
+        if not p:
+            logger.error(f"Cannot persist non-existent project {project_id}")
+            return
+        try:
+            p_file = self.storage_dir / f"{project_id}.json"
+            with tempfile.NamedTemporaryFile(
+                mode="w", dir=self.storage_dir, suffix=".tmp", delete=False
+            ) as tmp:
+                tmp.write(p.model_dump_json(indent=2))
+                tmp_path = Path(tmp.name)
+            tmp_path.replace(p_file)
+        except Exception as exc:
+            # B-6 fix: Don't silently fail - log with full traceback and re-raise
+            logger.exception(f"CRITICAL: Failed to persist project {project_id} - data loss risk!")
+            raise RuntimeError(f"Persistence failed for project {project_id}: {exc}") from exc
 
 
 # Global Singleton Instance

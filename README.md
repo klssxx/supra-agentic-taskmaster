@@ -7,12 +7,12 @@ testing causal strategies, and issuing auditable technical dossiers.
 
 SUPRA combines a deterministic five-stage workflow with an optional model
 boundary. The deterministic stages remain authoritative for state transitions,
-safety gates, sandbox verification, and the SHA-256 deliverable ledger.
+safety gates, scoped strategy-coverage checks, trusted restricted execution, and the SHA-256 deliverable ledger.
 
 1. **RECEIVED** — capture the objective and initialize an isolated project.
 2. **STRUCTURED** — separate invariants, mutable assumptions, and subtasks.
 3. **STRATIFIED** — produce Conservative, Orthogonal, and Disruptive pathways.
-4. **SANDBOX_VERIFIED** — verify invariants and run the contained AST sandbox.
+4. **RESTRICTED_EXECUTION_VERIFIED** — reached only by a passing, identity-bound trusted internal check. Generic internal checks are recorded but do not advance this stage. This is in-process restricted execution, not a security sandbox, and it does not accept arbitrary remote Python.
 5. **COMPLETED** — persist checkpoints and export the integrity-checked dossier.
 
 The model is an interchangeable assistant, not a hidden requirement. The
@@ -29,7 +29,7 @@ Provider-neutral Taskmaster facade ---- optional model provider
           |
           v
 Deterministic stage runner
-  decompose -> synthesize -> verify -> sandbox -> checkpoint
+  decompose -> synthesize -> scoped coverage -> restricted execution -> checkpoint
           |
           v
 Thread-safe state + JSON/Markdown/HTML dossier + SHA-256 ledger
@@ -131,7 +131,8 @@ same Uvicorn application and does not assume a hosting vendor or provider.
   provider process.
 - Error responses do not include provider response bodies or authorization
   headers.
-- The deterministic sandbox remains contained and its evidence is persisted in
+- Restricted execution is in-process, is not a security sandbox, and never claims
+  process isolation or scientific validation. Its scoped telemetry is persisted in
   the project checkpoint ledger.
 
 ## License

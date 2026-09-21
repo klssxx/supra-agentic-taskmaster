@@ -1,14 +1,15 @@
 """Tests for the provider-neutral Taskmaster facade and runner."""
+
 import tempfile
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from supra_agentic.models import TaskmasterStage
 from supra_agentic.agent import TaskmasterAgent
+from supra_agentic.models import TaskmasterStage
 from supra_agentic.providers import AgentProvider, ProviderResponse, ToolInput
 from supra_agentic.runner import TaskmasterRunner
 from supra_agentic.state import state_manager
-from supra_agentic.tools import execute_sandbox_action, synthesize_strategy
+from supra_agentic.tools import synthesize_strategy
 
 
 class RecordingProvider(AgentProvider):
@@ -74,8 +75,8 @@ def test_runner_golden_path_execution():
         # nunca garantizado de antemano. NOT_EVALUATED es un estado válido.
         assert posture.verification.verdict in {"PASS", "CONDITIONAL_PASS", "FAIL", "NOT_EVALUATED"}
         assert 0.0 <= posture.verification.confidence_score <= 1.0
-        assert len(posture.sandbox_results) >= 1
-        assert posture.sandbox_results[-1].passed is True
+        assert len(posture.restricted_execution_results) >= 1
+        assert posture.restricted_execution_results[-1].passed is True
         assert posture.final_output is not None
         assert "audit_sha256" in posture.final_output
         assert "null_hypothesis_h0" in posture.final_output
@@ -92,11 +93,14 @@ def test_runner_self_correction_feedback():
 
         # Decompose first
         from supra_agentic.tools import decompose_objective
+
         decompose_objective(pid, objective=p.objective)
 
         # Synthesize with error feedback
         feedback = "AssertionError: Database connection failed during burst mode"
-        r = synthesize_strategy(pid, pathways_count=3, allow_disruptive=True, error_feedback=feedback)
+        r = synthesize_strategy(
+            pid, pathways_count=3, allow_disruptive=True, error_feedback=feedback
+        )
         assert r["status"] == "success"
         assert r["self_correction_applied"] is True
         assert r["selected_candidate"]["paradigm_type"] == "DISRUPTIVE"

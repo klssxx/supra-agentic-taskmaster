@@ -1,4 +1,5 @@
 """OpenAI-compatible HTTP provider used by local and cloud backends."""
+
 from __future__ import annotations
 
 import os
@@ -8,10 +9,31 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from .base import AgentProvider, ProviderError, ProviderResponse, ProviderUnavailable, ToolInput, ToolSpec
-
+from .base import (
+    AgentProvider,
+    ProviderError,
+    ProviderResponse,
+    ProviderUnavailable,
+    ToolInput,
+    ToolSpec,
+)
 
 _AUTO_MODELS = {"", "auto", "default"}
+MAX_PROVIDER_RESPONSE_BYTES = 8 * 1024 * 1024
+
+
+def _response_json(response: httpx.Response, provider_name: str) -> Mapping[str, Any]:
+    if len(response.content) > MAX_PROVIDER_RESPONSE_BYTES:
+        raise ProviderError(
+            f"{provider_name} provider response exceeds {MAX_PROVIDER_RESPONSE_BYTES} bytes"
+        )
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise ProviderError(f"{provider_name} provider returned invalid JSON") from exc
+    if not isinstance(payload, Mapping):
+        raise ProviderError(f"{provider_name} provider returned an invalid response object")
+    return payload
 
 
 def _env_float(name: str, default: float) -> float:
@@ -87,7 +109,9 @@ class OpenAICompatibleProvider(AgentProvider):
         self.base_url = _normalize_base_url(base_url)
         self.api_key = api_key.strip() if api_key and api_key.strip() else None
         self.default_model = (default_model or "").strip()
-        self.timeout = timeout if timeout is not None else _env_float("SUPRA_PROVIDER_TIMEOUT", 60.0)
+        self.timeout = (
+            timeout if timeout is not None else _env_float("SUPRA_PROVIDER_TIMEOUT", 60.0)
+        )
         if self.timeout <= 0:
             raise ValueError("Provider timeout must be greater than zero")
         self._transport = transport
@@ -102,7 +126,6 @@ class OpenAICompatibleProvider(AgentProvider):
         """Expose configuration that is safe to return from a health endpoint."""
         return {
             "name": self.name,
-            "base_url": self.base_url,
             "model": self.default_model or "auto",
             "configured": True,
             "protocol": "openai-compatible",
@@ -123,22 +146,25 @@ class OpenAICompatibleProvider(AgentProvider):
         )
 
     def list_models(self) -> list[str]:
-        """Discover models without failing generation when discovery is unsupported."""
+        """Discover and cache models; surface discovery failures explicitly."""
         if self._cached_models is not None:
             return list(self._cached_models)
         try:
             with self._client() as client:
                 response = client.get("/models")
-        except httpx.HTTPError:
-            return []
-        if response.status_code != 200:
-            return []
-        try:
-            payload = response.json()
-        except ValueError:
-            return []
-        raw_models = payload.get("data", []) if isinstance(payload, Mapping) else []
-        models = [str(item["id"]) for item in raw_models if isinstance(item, Mapping) and item.get("id")]
+        except httpx.HTTPError as exc:
+            raise ProviderUnavailable(
+                f"{self.name} model discovery endpoint is unavailable"
+            ) from exc
+        if response.status_code >= 400:
+            raise ProviderError(f"{self.name} model discovery returned HTTP {response.status_code}")
+        payload = _response_json(response, self.name)
+        raw_models = payload.get("data", [])
+        if not isinstance(raw_models, list):
+            raise ProviderError(f"{self.name} model discovery returned invalid data")
+        models = [
+            str(item["id"]) for item in raw_models if isinstance(item, Mapping) and item.get("id")
+        ]
         self._cached_models = models
         return list(models)
 
@@ -183,12 +209,7 @@ class OpenAICompatibleProvider(AgentProvider):
             raise ProviderError(
                 f"{self.name} provider returned HTTP {response.status_code}; check endpoint and credentials"
             )
-        try:
-            body = response.json()
-        except ValueError as exc:
-            raise ProviderError(f"{self.name} provider returned invalid JSON") from exc
-        if not isinstance(body, Mapping):
-            raise ProviderError(f"{self.name} provider returned an invalid response object")
+        body = _response_json(response, self.name)
         choices = body.get("choices")
         if not isinstance(choices, list) or not choices or not isinstance(choices[0], Mapping):
             raise ProviderError(f"{self.name} provider returned no choices")

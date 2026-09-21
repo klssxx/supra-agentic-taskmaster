@@ -1,24 +1,30 @@
 """Native Model Context Protocol (MCP) JSON-RPC 2.0 Handler for SUPRA Agentic Taskmaster.
 
 Exposes standard MCP tools, resources, and prompts over HTTP JSON-RPC 2.0:
-  - Tools: supra_decompose, supra_synthesize, supra_verify, supra_sandbox, supra_quick_run
+  - Tools: supra_decompose, supra_synthesize, supra_verify,
+    supra_restricted_execution, supra_quick_run
   - Resources: supra://schema/invariants, supra://state/active-projects
   - Prompts: prompt_taskmaster_challenge, prompt_falsification_audit
 """
+
 from __future__ import annotations
 
 import json
-from typing import Any, Mapping
+import logging
+from collections.abc import Mapping
+from typing import Any
 
 from .runner import taskmaster_runner
 from .state import state_manager
 from .tools import (
+    MAX_FUZZ_ITERATIONS,
     decompose_objective,
-    execute_sandbox_action,
-    record_checkpoint,
+    restricted_python_executor,
     synthesize_strategy,
     verify_solution,
 )
+
+logger = logging.getLogger("supra_agentic.mcp_handler")
 
 MCP_TOOLS_MANIFEST = [
     {
@@ -27,7 +33,10 @@ MCP_TOOLS_MANIFEST = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "objective": {"type": "string", "description": "The challenge or problem to solve."},
+                "objective": {
+                    "type": "string",
+                    "description": "The challenge or problem to solve.",
+                },
                 "domain": {"type": "string", "default": "general"},
             },
             "required": ["objective"],
@@ -61,7 +70,7 @@ MCP_TOOLS_MANIFEST = [
     },
     {
         "name": "supra_verify",
-        "description": "Formulate formal empirical falsification hypothesis (H0) and verify invariants.",
+        "description": "Check mapped invariant coverage in candidate strategy text; this is heuristic coverage, not scientific validation.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -71,15 +80,25 @@ MCP_TOOLS_MANIFEST = [
         },
     },
     {
-        "name": "supra_sandbox",
-        "description": "Execute AST-parsed synthetic simulation and fuzzing in the isolated micro-sandbox.",
+        "name": "supra_restricted_execution",
+        "description": (
+            "Run SUPRA's fixed trusted internal Python verification. "
+            "This is in-process restricted execution, not a security sandbox; "
+            "remote Python source is not accepted."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "project_id": {"type": "string"},
-                "fuzz_iterations": {"type": "integer", "default": 5},
+                "fuzz_iterations": {
+                    "type": "integer",
+                    "default": 5,
+                    "minimum": 1,
+                    "maximum": MAX_FUZZ_ITERATIONS,
+                },
             },
             "required": ["project_id"],
+            "additionalProperties": False,
         },
     },
 ]
@@ -109,7 +128,7 @@ MCP_PROMPTS_MANIFEST = [
     },
     {
         "name": "prompt_falsification_audit",
-        "description": "Audit an AI architecture using Judea Pearl counterfactual invariant testing.",
+        "description": "Audit recorded strategy and verification evidence with explicit scope and falsification limits.",
         "arguments": [
             {"name": "project_id", "description": "Project ID to audit", "required": True},
         ],
@@ -159,16 +178,33 @@ def handle_mcp_jsonrpc_request(payload: Mapping[str, Any]) -> dict[str, Any]:
         if method == "resources/read":
             uri = params.get("uri")
             if uri == "supra://schema/invariants":
-                content = json.dumps({"invariants": ["System integrity", "Memory boundary containment", "Zero-trust verification"]}, indent=2)
+                content = json.dumps(
+                    {
+                        "invariants": [
+                            "System integrity",
+                            "Memory boundary containment",
+                            "Zero-trust verification",
+                        ]
+                    },
+                    indent=2,
+                )
             elif uri == "supra://state/active-projects":
                 projects = [p.model_dump() for p in state_manager.list_projects(limit=10)]
-                content = json.dumps({"active_count": len(projects), "projects": projects}, indent=2)
+                content = json.dumps(
+                    {"active_count": len(projects), "projects": projects}, indent=2
+                )
             else:
-                raise ValueError(f"Unknown resource URI: {uri}")
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {"code": -32602, "message": "Invalid params: unknown resource URI"},
+                }
             return {
                 "jsonrpc": "2.0",
                 "id": req_id,
-                "result": {"contents": [{"uri": uri, "mimeType": "application/json", "text": content}]},
+                "result": {
+                    "contents": [{"uri": uri, "mimeType": "application/json", "text": content}]
+                },
             }
 
         if method == "prompts/list":
@@ -189,29 +225,80 @@ def handle_mcp_jsonrpc_request(payload: Mapping[str, Any]) -> dict[str, Any]:
                 )
                 res = posture.model_dump()
             elif tool_name == "supra_decompose":
-                res = decompose_objective(args["project_id"], args["objective"], args.get("domain", "general"))
+                res = decompose_objective(
+                    args["project_id"], args["objective"], args.get("domain", "general")
+                )
             elif tool_name == "supra_synthesize":
-                res = synthesize_strategy(args["project_id"], args.get("pathways_count", 3), args.get("allow_disruptive", True))
+                res = synthesize_strategy(
+                    args["project_id"],
+                    args.get("pathways_count", 3),
+                    args.get("allow_disruptive", True),
+                )
             elif tool_name == "supra_verify":
                 res = verify_solution(args["project_id"])
-            elif tool_name == "supra_sandbox":
-                res = execute_sandbox_action(args["project_id"], fuzz_iterations=args.get("fuzz_iterations", 5))
+            elif tool_name == "supra_restricted_execution":
+                allowed = {"project_id", "fuzz_iterations"}
+                unexpected = sorted(set(args) - allowed)
+                if unexpected:
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": req_id,
+                        "error": {
+                            "code": -32602,
+                            "message": f"Invalid params: unsupported fields {unexpected}",
+                        },
+                    }
+                iterations = args.get("fuzz_iterations", 5)
+                if (
+                    isinstance(iterations, bool)
+                    or not isinstance(iterations, int)
+                    or not 1 <= iterations <= MAX_FUZZ_ITERATIONS
+                ):
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": req_id,
+                        "error": {
+                            "code": -32602,
+                            "message": (
+                                "Invalid params: fuzz_iterations must be an integer "
+                                f"between 1 and {MAX_FUZZ_ITERATIONS}"
+                            ),
+                        },
+                    }
+                res = restricted_python_executor(args["project_id"], fuzz_iterations=iterations)
             else:
-                raise ValueError(f"Unknown MCP tool: {tool_name}")
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {"code": -32601, "message": "Method not found: unknown tool"},
+                }
 
             return {
                 "jsonrpc": "2.0",
                 "id": req_id,
                 "result": {
-                    "content": [{"type": "text", "text": json.dumps(res, indent=2, ensure_ascii=False)}],
+                    "content": [
+                        {"type": "text", "text": json.dumps(res, indent=2, ensure_ascii=False)}
+                    ],
                 },
             }
 
-        raise ValueError(f"Method not found: {method}")
-
-    except Exception as exc:
         return {
             "jsonrpc": "2.0",
             "id": req_id,
-            "error": {"code": -32000, "message": str(exc)},
+            "error": {"code": -32601, "message": "Method not found"},
+        }
+
+    except KeyError:
+        return {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "error": {"code": -32602, "message": "Invalid params: missing required field"},
+        }
+    except Exception as exc:
+        logger.error("Unhandled MCP error (%s)", type(exc).__name__)
+        return {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "error": {"code": -32603, "message": "Internal server error"},
         }

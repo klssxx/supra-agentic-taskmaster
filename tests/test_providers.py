@@ -1,4 +1,5 @@
 """Provider contract tests for the provider-agnostic SUPRA runtime."""
+
 from __future__ import annotations
 
 import asyncio
@@ -6,8 +7,12 @@ import json
 
 import httpx
 import pytest
-
-from supra_agentic.providers import HermesProvider, OllamaProvider, OpenAICompatibleProvider, get_provider
+from supra_agentic.providers import (
+    HermesProvider,
+    OllamaProvider,
+    OpenAICompatibleProvider,
+    get_provider,
+)
 from supra_agentic.providers.base import ProviderError
 
 
@@ -29,7 +34,9 @@ def test_provider_registry_resolves_ollama_without_network() -> None:
     assert provider.base_url == "http://127.0.0.1:11434/v1"
 
 
-def test_provider_registry_uses_environment_for_custom_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_provider_registry_uses_environment_for_custom_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("SUPRA_PROVIDER", "openai-compatible")
     monkeypatch.setenv("SUPRA_BASE_URL", "http://127.0.0.1:9999/v1")
     monkeypatch.setenv("SUPRA_MODEL", "local-model")
@@ -126,9 +133,7 @@ def test_generate_async_uses_same_contract() -> None:
         default_model="model",
         transport=httpx.MockTransport(handler),
     )
-    response = asyncio.run(
-        provider.generate_async([{"role": "user", "content": "hello"}])
-    )
+    response = asyncio.run(provider.generate_async([{"role": "user", "content": "hello"}]))
 
     assert response.text == "async ok"
     assert response.model == "model"

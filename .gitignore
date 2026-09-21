@@ -58,5 +58,9 @@ service_account.json
 credentials.json
 .env.*
 
+# Runtime project state (generated; preserved locally but not versioned)
+data/projects/*.json
+!data/projects/example-quick-run.json
+
 # Runtime state (local, non-reproducible)
 .hermes/supra_state/
