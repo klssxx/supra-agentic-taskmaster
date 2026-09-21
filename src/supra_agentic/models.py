@@ -259,7 +259,6 @@ class ProjectPosture(BaseModel):
             if self.selected_candidate is not None
             else None
         )
-        has_authoritative_bound_pass = False
         for result in self.restricted_execution_results:
             matches_selected_candidate = bool(
                 result.identity_bound
@@ -271,13 +270,16 @@ class ProjectPosture(BaseModel):
                 and result.protocol_version.startswith("sha256:")
             )
             result.identity_bound = matches_selected_candidate
-            if result.passed and matches_selected_candidate:
-                has_authoritative_bound_pass = True
 
         latest_execution = (
             self.restricted_execution_results[-1]
             if self.restricted_execution_results
             else None
+        )
+        latest_authoritative_bound_pass = bool(
+            latest_execution
+            and latest_execution.passed
+            and latest_execution.identity_bound
         )
         if self.final_output is not None:
             output = dict(self.final_output)
@@ -298,7 +300,7 @@ class ProjectPosture(BaseModel):
 
         if (
             self.stage is TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED
-            and not has_authoritative_bound_pass
+            and not latest_authoritative_bound_pass
         ):
             self.stage = TaskmasterStage.STRATIFIED
             self.checkpoints.append(
