@@ -121,7 +121,8 @@ def test_massive_output_is_bounded() -> None:
     )
     execution = result["restricted_execution_result"]
     assert execution["passed"] is False
-    assert "output limit" in execution["output_log"].lower()
+    assert execution["error_type"] == "RuntimeError"
+    assert "output limit" not in execution["output_log"].lower()
     assert len(execution["output_log"]) <= MAX_OUTPUT_SIZE
 
 
@@ -133,7 +134,8 @@ def test_trusted_exception_is_captured_at_boundary() -> None:
     )
     execution = result["restricted_execution_result"]
     assert execution["passed"] is False
-    assert "expected failure" in execution["output_log"]
+    assert execution["error_type"] == "RuntimeError"
+    assert "expected failure" not in execution["output_log"]
     assert execution["side_effects_contained"] is False
 
 
