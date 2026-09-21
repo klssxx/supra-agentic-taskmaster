@@ -139,7 +139,11 @@ class TaskmasterRunner:
             # Self-correct if the internal restricted check fails.
             retries = 0
             while (
-                not execution_res["restricted_execution_result"]["passed"] and retries < max_retries
+                (
+                    not execution_res["restricted_execution_result"]["passed"]
+                    or not execution_res["restricted_execution_result"]["identity_bound"]
+                )
+                and retries < max_retries
             ):
                 retries += 1
                 err_log = execution_res["restricted_execution_result"]["output_log"]
@@ -159,6 +163,13 @@ class TaskmasterRunner:
                 # Re-verify and re-run the trusted internal check.
                 verify_solution(project_id=pid)
                 execution_res = restricted_python_executor(project_id=pid, fuzz_iterations=5)
+
+            final_execution = execution_res["restricted_execution_result"]
+            if not final_execution["passed"] or not final_execution["identity_bound"]:
+                raise RuntimeError(
+                    "restricted execution did not produce a bound passing result "
+                    f"after {retries} correction attempt(s)"
+                )
 
             # Stage 5: Final Checkpoint & Deliverable Ledger (COMPLETED)
             logger.info(f"[{pid}] Executing Tool 5: record_checkpoint")
