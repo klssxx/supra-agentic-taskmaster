@@ -52,6 +52,23 @@ contracts:
   - tests/astra_canon/test_astra_supra_contracts.py
   limitations:
   - La procedencia universal sigue limitada a componentes que ya emiten evidencia.
+- id: ASTRA-006
+  name: Score con significado delimitado
+  status: CANON
+  scopes:
+  - CRIBA
+  - BLACKFORGE
+  - SUPRA
+  contract:
+  - todo score declara objetivo, escala, cobertura y heurística vs medición cuando aplica
+  - un score interno no se presenta como probabilidad real de éxito sin soporte
+  implementation:
+  - src/supra_agentic/models.py
+  - src/supra_agentic/tools.py
+  tests:
+  - tests/astra_canon/test_astra_supra_contracts.py
+  limitations:
+  - La confianza de verificación se limita explícitamente a cobertura textual de invariantes; no es probabilidad de éxito.
 - id: ASTRA-017
   name: Planificación != ejecución
   status: CANON
@@ -149,6 +166,22 @@ contracts:
   - tests/astra_canon/test_astra_supra_contracts.py
   limitations:
   - La instrumentación es mínima y no pretende telemetría universal.
+- id: ASTRA-027
+  name: Confirmación independiente
+  status: CANON
+  scopes:
+  - CRIBA
+  - BLACKFORGE
+  - SUPRA
+  contract:
+  - datos usados para desarrollo no vuelven a considerarse confirmatorios independientes
+  implementation:
+  - governance/ASTRA_CANON.yaml
+  - docs/ASTRA_CANON.md
+  tests:
+  - tests/astra_canon/test_astra_manifest.py
+  limitations:
+  - Guard documental y de frontera; SUPRA no ejecuta campañas confirmatorias independientes.
 - id: ASTRA-028
   name: Evaluador sometido a control
   status: CANON
