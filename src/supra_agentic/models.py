@@ -255,17 +255,21 @@ class ProjectPosture(BaseModel):
             if self.selected_candidate is not None
             else None
         )
-        has_authoritative_bound_pass = any(
-            result.passed
-            and result.identity_bound
-            and expected is not None
-            and result.candidate_id == expected["candidate_id"]
-            and result.mechanism_version == expected["mechanism_version"]
-            and result.claim_id == expected["claim_id"]
-            and isinstance(result.protocol_version, str)
-            and result.protocol_version.startswith("sha256:")
-            for result in self.restricted_execution_results
-        )
+        has_authoritative_bound_pass = False
+        for result in self.restricted_execution_results:
+            matches_selected_candidate = bool(
+                result.identity_bound
+                and expected is not None
+                and result.candidate_id == expected["candidate_id"]
+                and result.mechanism_version == expected["mechanism_version"]
+                and result.claim_id == expected["claim_id"]
+                and isinstance(result.protocol_version, str)
+                and result.protocol_version.startswith("sha256:")
+            )
+            result.identity_bound = matches_selected_candidate
+            if result.passed and matches_selected_candidate:
+                has_authoritative_bound_pass = True
+
         if not has_authoritative_bound_pass:
             self.stage = TaskmasterStage.STRATIFIED
             self.checkpoints.append(
