@@ -644,6 +644,41 @@ def record_checkpoint(
     verification_verdict = (
         posture.verification.verdict if posture.verification else "NOT_EVALUATED"
     )
+    opportunity_accounting = {
+        "candidate_opportunities": len(posture.candidates),
+        "selection_opportunities": len(posture.candidates),
+        "selected_candidates": 1 if posture.selected_candidate else 0,
+        "verification_reports": 1 if posture.verification else 0,
+        "restricted_execution_attempts": len(posture.restricted_execution_results),
+        "provider_generation_calls": None,
+        "provider_generation_calls_authoritative": False,
+        "budget_complete": False,
+        "scope": "SUPRA_WORKFLOW_LOCAL_ACCOUNTING",
+    }
+    reproducibility_dependencies = {
+        "closure_complete": False,
+        "selected_candidate_id": (
+            posture.selected_candidate.candidate_id if posture.selected_candidate else None
+        ),
+        "restricted_protocol_version": (
+            latest_execution.protocol_version if latest_execution else None
+        ),
+        "provider_metadata_present": provider_metadata is not None,
+        "known_unclosed_dependencies": [
+            "code_version",
+            "python_runtime",
+            "provider_model_and_config_when_used",
+            "external_environment_state",
+        ],
+    }
+    evaluator_controls = {
+        "blinding": False,
+        "positive_controls": False,
+        "negative_controls": False,
+        "disagreement_analysis": False,
+        "strong_scientific_claims_supported": False,
+    }
+
     payload = {
         "title": deliverable_title,
         "project_id": project_id,
@@ -672,6 +707,22 @@ def record_checkpoint(
             latest_execution and latest_execution.identity_bound
         ),
         "scientific_status": "NOT_VALIDATED",
+        "discriminant_protocol_status": "NOT_ESTABLISHED",
+        "independent_confirmation_status": "NOT_ESTABLISHED",
+        "learning_update_status": "NOT_APPLICABLE",
+        "evaluator_controls": evaluator_controls,
+        "opportunity_accounting": opportunity_accounting,
+        "reproducibility_dependencies": reproducibility_dependencies,
+        "evidence_provenance": {
+            "verification_report_id": (
+                posture.verification.report_id if posture.verification else None
+            ),
+            "restricted_execution_ids": [
+                item.execution_id for item in posture.restricted_execution_results
+            ],
+            "scope": "SUPRA_WORKFLOW_TELEMETRY",
+            "transformation": "record_checkpoint_payload_v2",
+        },
         "integrity_semantics": "SHA256_OF_SERIALIZED_PAYLOAD_NOT_TRUTH",
         "checkpoints_count": len(posture.checkpoints) + 1,
         "timestamp": time.time(),
