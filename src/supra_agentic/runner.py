@@ -102,9 +102,13 @@ class TaskmasterRunner:
                     }
                 )
             except ProviderError as exc:
-                # Model help is optional. The deterministic pipeline remains
-                # authoritative when a local/cloud endpoint is unavailable.
-                model_assistance.update({"status": "unavailable", "error": str(exc)})
+                # Model help is optional. Do not persist provider exception
+                # details into the project deliverable.
+                model_assistance.update({
+                    "status": "unavailable",
+                    "error": "provider_assistance_unavailable",
+                    "error_type": type(exc).__name__,
+                })
 
         # Stage 1: Initialize Project (RECEIVED)
         posture = state_manager.create_project(objective=clean_obj, project_id=project_id)
