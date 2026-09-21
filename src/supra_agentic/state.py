@@ -282,9 +282,15 @@ class ProjectStateManager:
                 tmp_path = Path(tmp.name)
             tmp_path.replace(p_file)
         except Exception as exc:
-            # B-6 fix: Don't silently fail - log with full traceback and re-raise
-            logger.exception(f"CRITICAL: Failed to persist project {project_id} - data loss risk!")
-            raise RuntimeError(f"Persistence failed for project {project_id}: {exc}") from exc
+            error_type = type(exc).__name__
+            logger.error(
+                "Project persistence failed (%s); data-loss risk for project %s",
+                error_type,
+                project_id,
+            )
+            raise RuntimeError(
+                f"Persistence failed for project {project_id} ({error_type})"
+            ) from exc
 
 
 # Global Singleton Instance
