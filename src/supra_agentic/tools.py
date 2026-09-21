@@ -23,6 +23,7 @@ from .models import (
     Subtask,
     TaskmasterStage,
     VerificationReport,
+    candidate_execution_identity,
 )
 from .state import state_manager
 
@@ -422,31 +423,7 @@ def _selected_candidate_identity(project_id: str) -> dict[str, str] | None:
     if posture is None:
         raise KeyError(f"Project '{project_id}' not found.")
     candidate = posture.selected_candidate
-    if candidate is None:
-        return None
-    mechanism_payload = json.dumps(
-        {
-            "candidate_id": candidate.candidate_id,
-            "pathway_name": candidate.pathway_name,
-            "hypothesis": candidate.hypothesis,
-            "action_plan": candidate.action_plan,
-        },
-        sort_keys=True,
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
-    mechanism_version = "sha256:" + hashlib.sha256(
-        mechanism_payload.encode("utf-8")
-    ).hexdigest()
-    claim_id = "claim-" + hashlib.sha256(
-        candidate.hypothesis.encode("utf-8")
-    ).hexdigest()[:24]
-    return {
-        "candidate_id": candidate.candidate_id,
-        "mechanism_version": mechanism_version,
-        "claim_id": claim_id,
-    }
-
+    return candidate_execution_identity(candidate) if candidate is not None else None
 
 def _protocol_version_for_code(code: str) -> str:
     payload = f"{RESTRICTED_PROTOCOL_FAMILY}\n{code}"
