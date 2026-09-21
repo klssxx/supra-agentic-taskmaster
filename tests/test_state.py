@@ -3,12 +3,14 @@
 import tempfile
 
 from supra_agentic.models import (
+    RESTRICTED_EXECUTION_SEMANTICS_VERSION,
     RestrictedExecutionResult,
     StrategyCandidate,
     StructuredDecomposition,
     Subtask,
     TaskmasterStage,
     VerificationReport,
+    candidate_execution_identity,
 )
 from supra_agentic.state import ProjectStateManager
 
@@ -78,10 +80,16 @@ def test_project_lifecycle_transitions():
         sm.record_verification(p.project_id, v_rep)
 
         # Stage 4b: trusted restricted execution
+        expected_identity = candidate_execution_identity(cand1)
         execution_result = RestrictedExecutionResult(
+            candidate_id=expected_identity["candidate_id"],
+            mechanism_version=expected_identity["mechanism_version"],
+            claim_id=expected_identity["claim_id"],
+            protocol_version="sha256:test-protocol",
+            execution_semantics_version=RESTRICTED_EXECUTION_SEMANTICS_VERSION,
             action_type="RESTRICTED_CODE_RUN",
             passed=True,
-            output_log="Verified 5/5 fixed internal assertions.",
+            output_log="Restricted internal assertions passed.",
             duration_ms=4.2,
         )
         p4 = sm.record_restricted_execution(p.project_id, execution_result)
