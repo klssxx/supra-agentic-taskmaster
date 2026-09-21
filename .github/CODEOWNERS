@@ -1,0 +1,12 @@
+# ASTRA canon: changes require explicit owner review.
+.github/workflows/** @klssxx
+.github/CODEOWNERS @klssxx
+governance/ASTRA_CANON.yaml @klssxx
+docs/ASTRA_CANON.md @klssxx
+docs/ASTRA_COVERAGE_MATRIX.md @klssxx
+tests/astra_canon/** @klssxx
+src/supra_agentic/models.py @klssxx
+src/supra_agentic/state.py @klssxx
+src/supra_agentic/tools.py @klssxx
+src/supra_agentic/dossier.py @klssxx
+src/supra_agentic/integrations/criba_bridge.py @klssxx

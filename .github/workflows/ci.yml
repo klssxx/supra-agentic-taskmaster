@@ -14,6 +14,31 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  astra-canon:
+    name: ASTRA canon
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with:
+          version: '0.11.28'
+          enable-cache: true
+          prune-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install locked dependencies
+        shell: pwsh
+        run: uv sync --all-extras --locked
+      - name: Enforce ASTRA canon contracts
+        shell: pwsh
+        run: uv run --locked pytest -q tests/astra_canon
+
   quality:
     name: quality (Python ${{ matrix.python-version }})
     runs-on: windows-2025
@@ -203,10 +228,11 @@ jobs:
 
   ci-result:
     name: ci-result
-    needs: [quality, lint-types, dependency-audit, secret-scan, repository-scan, package, docker]
+    needs: [astra-canon, quality, lint-types, dependency-audit, secret-scan, repository-scan, package, docker]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     env:
+      ASTRA_CANON_RESULT: ${{ needs.astra-canon.result }}
       QUALITY_RESULT: ${{ needs.quality.result }}
       LINT_TYPES_RESULT: ${{ needs.lint-types.result }}
       DEPENDENCY_AUDIT_RESULT: ${{ needs.dependency-audit.result }}
@@ -218,7 +244,7 @@ jobs:
       - name: Enforce every required check
         shell: bash
         run: |
-          for check in QUALITY_RESULT LINT_TYPES_RESULT DEPENDENCY_AUDIT_RESULT SECRET_SCAN_RESULT REPOSITORY_SCAN_RESULT PACKAGE_RESULT DOCKER_RESULT; do
+          for check in ASTRA_CANON_RESULT QUALITY_RESULT LINT_TYPES_RESULT DEPENDENCY_AUDIT_RESULT SECRET_SCAN_RESULT REPOSITORY_SCAN_RESULT PACKAGE_RESULT DOCKER_RESULT; do
             value="${!check}"
             if [ "$value" != "success" ]; then
               echo "$check did not pass: $value" >&2
