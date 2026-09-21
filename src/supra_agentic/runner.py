@@ -187,8 +187,9 @@ class TaskmasterRunner:
             return final_posture
 
         except Exception as exc:
-            logger.error(f"[{pid}] Taskmaster execution encountered an error: {exc}")
-            state_manager.fail_project(pid, str(exc))
+            error_type = type(exc).__name__
+            logger.error("[%s] Taskmaster execution failed (%s)", pid, error_type)
+            state_manager.fail_project(pid, f"Taskmaster execution failed ({error_type})")
             failed_posture = state_manager.get_project(pid)
             assert failed_posture is not None
             return failed_posture
