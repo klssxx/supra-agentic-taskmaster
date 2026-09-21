@@ -155,9 +155,11 @@ def serve_ui() -> Response:
 def create_and_run_project(req: CreateProjectRequest) -> dict[str, Any] | Response:
     """Execute the five-stage workflow with deterministic gates.
 
-    Returns appropriate HTTP status based on pipeline execution result:
-    - 201 Created + {"status": "success"} on successful completion
-    - 500 Internal Server Error + {"status": "error"} on pipeline failure
+    Returns HTTP status for workflow execution. A 201 response means the
+    workflow request completed; verification and scientific status are returned
+    separately and must not be inferred from HTTP success.
+    - 201 Created + {"status": "success"} on workflow completion
+    - 500 Internal Server Error + {"status": "error"} on workflow failure
     """
     try:
         runner = TaskmasterRunner(provider_name=req.provider, model_name=req.model)
