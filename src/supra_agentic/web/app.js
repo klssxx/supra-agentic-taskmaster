@@ -72,11 +72,18 @@ function setUIState(status, stage, posture) {
     };
 
     const currentIdx = stageOrder[stage] !== undefined ? stageOrder[stage] : 0;
+    const restrictedVerified = Boolean(
+        posture && posture.restricted_execution_results &&
+        posture.restricted_execution_results.some(r => r.passed && r.identity_bound)
+    );
 
     steps.forEach((s, idx) => {
         const el = document.getElementById(`step-${s}`);
         if (!el) return;
         el.classList.remove('active', 'completed');
+        if (s === 'restricted' && stage === 'COMPLETED' && !restrictedVerified) {
+            return;
+        }
         if (idx < currentIdx) {
             el.classList.add('completed');
         } else if (idx === currentIdx) {
