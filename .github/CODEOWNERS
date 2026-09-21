@@ -10,3 +10,10 @@ src/supra_agentic/state.py @klssxx
 src/supra_agentic/tools.py @klssxx
 src/supra_agentic/dossier.py @klssxx
 src/supra_agentic/integrations/criba_bridge.py @klssxx
+README.md @klssxx
+docs/ASTRA_AGENT_POLICY.md @klssxx
+docs/ARCHITECTURE.md @klssxx
+src/supra_agentic/runner.py @klssxx
+src/supra_agentic/service.py @klssxx
+src/supra_agentic/mcp_handler.py @klssxx
+src/supra_agentic/web/** @klssxx
