@@ -9,6 +9,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+RESTRICTED_EXECUTION_SEMANTICS_VERSION = 2
+
 
 class TaskmasterStage(str, Enum):
     """5 Canonical Stages of the Taskmaster Agent Lifecycle."""
@@ -89,6 +91,7 @@ class RestrictedExecutionResult(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     execution_id: str = Field(default_factory=lambda: f"exec-{uuid.uuid4().hex[:6]}")
+    execution_semantics_version: int | None = None
     candidate_id: str | None = None
     mechanism_version: str | None = None
     claim_id: str | None = None
@@ -134,7 +137,11 @@ class RestrictedExecutionResult(BaseModel):
                 self.execution_id,
             )
         )
-        self.identity_bound = complete
+        self.identity_bound = bool(
+            complete
+            and self.execution_semantics_version
+            == RESTRICTED_EXECUTION_SEMANTICS_VERSION
+        )
         return self
 
 
@@ -188,7 +195,11 @@ class ProjectPosture(BaseModel):
                     "execution_id",
                 )
             )
-            if identity_complete:
+            semantics_current = (
+                result.get("execution_semantics_version")
+                == RESTRICTED_EXECUTION_SEMANTICS_VERSION
+            )
+            if identity_complete and semantics_current:
                 has_bound_pass = True
                 break
 
