@@ -58,6 +58,9 @@ def export_full_html_dossier(posture: ProjectPosture) -> str:
     decomp = posture.decomposition
     cand = posture.selected_candidate
     out = posture.final_output
+    h0 = out.get("null_hypothesis_h0") if out else None
+    h0_status = out.get("h0_evaluation_status", "NOT_EVALUATED") if out else "NOT_EVALUATED"
+    scientific_status = out.get("scientific_status", "NOT_VALIDATED") if out else "NOT_VALIDATED"
 
     return f"""<!DOCTYPE html>
 <html>
@@ -100,10 +103,15 @@ def export_full_html_dossier(posture: ProjectPosture) -> str:
 
   <h2>Empirical Falsification Hypothesis (H0)</h2>
   <div class="card" style="background: #fffbeb; border-color: #fef3c7;">
-    <p><strong>Null Hypothesis:</strong> {out.get("null_hypothesis_h0", "H0 verified") if out else "H0 verified"}</p>
+    <p><strong>Null Hypothesis:</strong> {h0 if h0 else "NOT_SPECIFIED"}</p>
+    <p><strong>Evaluation Status:</strong> {h0_status}</p>
   </div>
 
+  <h2>Scientific Status</h2>
+  <p><strong>Status:</strong> {scientific_status}</p>
+
   <h2>Cryptographic Integrity Signature</h2>
-  <p><strong>SHA-256 Audit Hash:</strong> <span class="mono">{out.get("audit_sha256", "N/A") if out else "N/A"}</span></p>
+  <p><strong>SHA-256 Payload Integrity Hash:</strong> <span class="mono">{out.get("audit_sha256", "NOT_AVAILABLE") if out else "NOT_AVAILABLE"}</span></p>
+  <p>This hash identifies the serialized payload; it does not certify truth or scientific validity.</p>
 </body>
 </html>"""
