@@ -127,7 +127,12 @@ def list_provider_options() -> dict[str, Any]:
             metadata["alias"] = name != provider.name
             providers.append(metadata)
         except ValueError as exc:
-            providers.append({"name": name, "configured": False, "error": str(exc)})
+            providers.append({
+                "name": name,
+                "configured": False,
+                "error": "provider_configuration_invalid",
+                "error_type": type(exc).__name__,
+            })
     return {
         "status": "success",
         "active": os.getenv("SUPRA_PROVIDER", "hermes").strip().lower(),
@@ -171,14 +176,15 @@ def create_and_run_project(req: CreateProjectRequest) -> dict[str, Any] | Respon
             use_model=req.use_model,
         )
 
-        # Check if pipeline actually succeeded
-        if posture.stage.value == "FAILED" or (
-            posture.verification and posture.verification.verdict == "FAIL"
-        ):
+        # Workflow failure and strategy-coverage verdict are different
+        # channels. A coverage FAIL is returned as verification state; it is not
+        # converted into an execution/server failure.
+        if posture.stage.value == "FAILED":
             return Response(
                 content=json.dumps(
                     {
                         "status": "error",
+                        "status_scope": "WORKFLOW_EXECUTION",
                         "project_id": posture.project_id,
                         "stage": posture.stage.value,
                         "error": posture.error_message or "Pipeline execution failed",
@@ -194,6 +200,7 @@ def create_and_run_project(req: CreateProjectRequest) -> dict[str, Any] | Respon
         final_output = posture.final_output or {}
         return {
             "status": "success",
+            "status_scope": "WORKFLOW_EXECUTION_ONLY",
             "workflow_status": posture.stage.value,
             "verification_status": (
                 posture.verification.verdict if posture.verification else "NOT_EVALUATED"
@@ -225,9 +232,11 @@ def generate_with_provider(req: GenerateRequest) -> dict[str, Any]:
             max_tokens=req.max_tokens,
         )
     except ProviderError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        logger.error("Provider generation failed (%s)", type(exc).__name__)
+        raise HTTPException(status_code=503, detail="Provider request failed.") from exc
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        logger.error("Invalid provider request (%s)", type(exc).__name__)
+        raise HTTPException(status_code=400, detail="Invalid provider request.") from exc
     return {
         "status": "success",
         "provider": response.provider,
