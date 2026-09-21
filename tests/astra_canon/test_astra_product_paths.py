@@ -5,9 +5,11 @@ from __future__ import annotations
 import tempfile
 
 import pytest
+import supra_agentic.runner as runner_module
 from pydantic import ValidationError
 
 from supra_agentic.models import ProjectPosture, TaskmasterStage, VerificationReport
+from supra_agentic.runner import TaskmasterRunner
 from supra_agentic.state import state_manager
 from supra_agentic.tools import (
     decompose_objective,
@@ -223,3 +225,31 @@ def test_astra_033_restricted_exception_message_is_redacted(tmp_path):
     assert result["passed"] is False
     assert result["error_type"] == "RuntimeError"
     assert "SENTINEL_SECRET_DO_NOT_LEAK" not in result["output_log"]
+
+
+def test_astra_017_runner_cannot_complete_without_bound_passing_execution(monkeypatch, tmp_path):
+    state_manager.storage_dir = type(state_manager.storage_dir)(tmp_path)
+
+    def _failed_execution(project_id: str, fuzz_iterations: int = 5):
+        return {
+            "status": "success",
+            "project_id": project_id,
+            "stage": "STRATIFIED",
+            "restricted_execution_result": {
+                "passed": False,
+                "identity_bound": False,
+                "output_log": "SENTINEL_INTERNAL_DETAIL",
+            },
+        }
+
+    monkeypatch.setattr(runner_module, "restricted_python_executor", _failed_execution)
+    runner = TaskmasterRunner()
+    posture = runner.run_golden_path(
+        "bounded workflow",
+        max_retries=0,
+        use_model=False,
+    )
+    assert posture.stage is TaskmasterStage.FAILED
+    assert posture.final_output is None
+    assert posture.error_message == "Taskmaster execution failed (RuntimeError)"
+    assert "SENTINEL_INTERNAL_DETAIL" not in posture.error_message
