@@ -221,14 +221,19 @@ def verify_solution(
     project_id: str,
     candidate_id: str | None = None,
 ) -> dict[str, Any]:
-    """Verify the selected candidate strategy against system invariants and safety policies.
+    """Evaluate textual strategy coverage against declared invariants.
+
+    PASS means the candidate text contains every supported coverage condition
+    checked by this deterministic heuristic. It does NOT certify a deployed
+    system, causal mechanism, safety property or scientific hypothesis.
 
     Args:
         project_id: The unique project identifier.
         candidate_id: Optional specific candidate to verify (defaults to currently selected candidate).
 
     Returns:
-        Verification report with confidence metrics and pass/fail verdict.
+        Scoped coverage report. confidence_score is a coverage fraction, not a
+        probability of real-world success.
     """
     posture = state_manager.get_project(project_id)
     if not posture:
@@ -344,6 +349,7 @@ def _run_invariant_evidence(
                     "status": "NOT_EVALUATED",
                     "test": "sin prueba ejecutable vinculada al candidato",
                     "counterexample": "",
+                    "evidence_type": "TEXTUAL_COVERAGE_HEURISTIC",
                 }
             )
             continue
@@ -355,6 +361,7 @@ def _run_invariant_evidence(
                 "status": "PASS" if covered else "FAIL",
                 "test": f"el plan/hipótesis del candidato cubre '{keyword}'",
                 "counterexample": "" if covered else counterexample,
+                "evidence_type": "TEXTUAL_COVERAGE_HEURISTIC",
             }
         )
     return evidence
@@ -595,7 +602,10 @@ def record_checkpoint(
     export_format: str = "json",
     provider_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Finalize the project lifecycle, compile all stage telemetry, and issue a verifiable deliverable ledger.
+    """Finalize the workflow and issue an integrity-addressed deliverable ledger.
+
+    Completion, coverage verification, restricted execution and scientific
+    validation are separate statuses. SHA-256 protects payload integrity only.
 
     Args:
         project_id: The unique project identifier.
@@ -617,19 +627,52 @@ def record_checkpoint(
         f"fails to outperform standard baseline under stress or introduces uncontained side-effects."
     )
 
+    latest_execution = (
+        posture.restricted_execution_results[-1]
+        if posture.restricted_execution_results
+        else None
+    )
+    restricted_execution_status = (
+        "BOUND_PASS"
+        if latest_execution and latest_execution.passed and latest_execution.identity_bound
+        else "BOUND_FAIL"
+        if latest_execution and latest_execution.identity_bound
+        else "UNBOUND"
+        if latest_execution
+        else "NOT_RUN"
+    )
+    verification_verdict = (
+        posture.verification.verdict if posture.verification else "NOT_EVALUATED"
+    )
     payload = {
         "title": deliverable_title,
         "project_id": project_id,
         "summary": summary,
         "null_hypothesis_h0": h0_statement,
+        "h0_evaluation_status": "NOT_EVALUATED",
         "objective": posture.objective,
         "domain": posture.decomposition.domain if posture.decomposition else "general",
         "selected_strategy": posture.selected_candidate.pathway_name
         if posture.selected_candidate
         else "Standard",
-        "verification_verdict": (
-            posture.verification.verdict if posture.verification else "NOT_EVALUATED"
+        "workflow_status": "COMPLETED",
+        "verification_verdict": verification_verdict,
+        "verification_scope": (
+            posture.verification.verification_scope
+            if posture.verification
+            else "TEXTUAL_STRATEGY_COVERAGE"
         ),
+        "verification_measurement_kind": (
+            posture.verification.measurement_kind
+            if posture.verification
+            else "HEURISTIC_COVERAGE"
+        ),
+        "restricted_execution_status": restricted_execution_status,
+        "restricted_execution_identity_bound": bool(
+            latest_execution and latest_execution.identity_bound
+        ),
+        "scientific_status": "NOT_VALIDATED",
+        "integrity_semantics": "SHA256_OF_SERIALIZED_PAYLOAD_NOT_TRUTH",
         "checkpoints_count": len(posture.checkpoints) + 1,
         "timestamp": time.time(),
     }
