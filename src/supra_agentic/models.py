@@ -84,12 +84,19 @@ class RestrictedExecutionResult(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     execution_id: str = Field(default_factory=lambda: f"exec-{uuid.uuid4().hex[:6]}")
+    candidate_id: str | None = None
+    mechanism_version: str | None = None
+    claim_id: str | None = None
+    protocol_version: str | None = None
+    observed_result: str | None = None
     action_type: str
     passed: bool
     output_log: str
     duration_ms: float
     side_effects_contained: bool = False
     execution_classification: str = "RESTRICTED_EXECUTION"
+    result_scope: str = "RESTRICTED_EXECUTION_ONLY"
+    scientific_validation: bool = False
     process_isolated: bool = False
     secure_for_untrusted_code: bool = False
     timestamp: float = Field(default_factory=time.time)
@@ -99,6 +106,13 @@ class RestrictedExecutionResult(BaseModel):
     def reject_unproven_security_claims(cls, value: bool) -> bool:
         if value:
             raise ValueError("restricted execution cannot claim security isolation")
+        return value
+
+    @field_validator("scientific_validation")
+    @classmethod
+    def reject_scientific_validation_claim(cls, value: bool) -> bool:
+        if value:
+            raise ValueError("restricted execution cannot claim scientific validation")
         return value
 
 

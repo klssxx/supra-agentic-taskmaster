@@ -445,6 +445,9 @@ def restricted_python_executor(
     fuzz_iterations: int = 5,
     *,
     trusted_internal: bool = False,
+    mechanism_version: str | None = None,
+    claim_id: str | None = None,
+    protocol_version: str | None = None,
 ) -> dict[str, Any]:
     """Run a bounded in-process check for trusted internal code only.
 
@@ -452,7 +455,6 @@ def restricted_python_executor(
     receive arbitrary remote or user-supplied Python. Any explicit source code
     requires the caller to opt into the trusted internal contract.
     """
-    del candidate_id
     if not 1 <= fuzz_iterations <= MAX_FUZZ_ITERATIONS:
         raise ValueError(f"fuzz_iterations must satisfy 1 <= value <= {MAX_FUZZ_ITERATIONS}")
     if code_snippet is not None and not trusted_internal:
@@ -480,6 +482,11 @@ def restricted_python_executor(
         duration_ms = (time.monotonic() - start_time) * 1000
         suffix = f" Captured {len(captured)} bytes." if captured else ""
         result = RestrictedExecutionResult(
+            candidate_id=candidate_id,
+            mechanism_version=mechanism_version,
+            claim_id=claim_id,
+            protocol_version=protocol_version,
+            observed_result="PASS",
             action_type="TRUSTED_RESTRICTED_PYTHON",
             passed=True,
             output_log=(
@@ -491,6 +498,11 @@ def restricted_python_executor(
     except Exception as exc:
         duration_ms = (time.monotonic() - start_time) * 1000
         result = RestrictedExecutionResult(
+            candidate_id=candidate_id,
+            mechanism_version=mechanism_version,
+            claim_id=claim_id,
+            protocol_version=protocol_version,
+            observed_result="FAIL",
             action_type="TRUSTED_RESTRICTED_PYTHON",
             passed=False,
             output_log=f"Restricted internal execution rejected: {exc}"[:MAX_OUTPUT_SIZE],
@@ -549,7 +561,9 @@ def record_checkpoint(
         "selected_strategy": posture.selected_candidate.pathway_name
         if posture.selected_candidate
         else "Standard",
-        "verification_verdict": posture.verification.verdict if posture.verification else "PASS",
+        "verification_verdict": (
+            posture.verification.verdict if posture.verification else "NOT_EVALUATED"
+        ),
         "checkpoints_count": len(posture.checkpoints) + 1,
         "timestamp": time.time(),
     }

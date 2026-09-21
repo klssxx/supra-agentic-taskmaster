@@ -10,7 +10,7 @@ def generate_svg_architecture(posture: ProjectPosture) -> str:
     cand_name = (
         posture.selected_candidate.pathway_name if posture.selected_candidate else "Standard"
     )
-    verdict = posture.verification.verdict if posture.verification else "PASS"
+    verdict = posture.verification.verdict if posture.verification else "NOT_EVALUATED"
 
     return f"""<svg width="720" height="200" viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg">
   <defs>
