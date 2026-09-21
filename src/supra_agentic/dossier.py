@@ -44,7 +44,7 @@ def generate_svg_architecture(posture: ProjectPosture) -> str:
   <!-- Node 3: Trusted Restricted Execution -->
   <rect x="460" y="60" width="120" height="80" rx="6" fill="#131822" stroke="#00FFCC" stroke-width="1.5"/>
   <text x="520" y="95" fill="#F0F4F8" font-family="sans-serif" font-size="11" font-weight="bold" text-anchor="middle">03. RESTRICTED</text>
-  <text x="520" y="115" fill="#10B981" font-family="monospace" font-size="9" text-anchor="middle">Internal Check ({verdict})</text>
+  <text x="520" y="115" fill="#10B981" font-family="monospace" font-size="9" text-anchor="middle">Coverage ({verdict})</text>
 
   <!-- Node 4: Final Deliverable -->
   <circle cx="660" cy="100" r="28" fill="url(#tealGrad)"/>
@@ -100,7 +100,7 @@ def export_full_html_dossier(posture: ProjectPosture) -> str:
 
   <h2>Empirical Falsification Hypothesis (H0)</h2>
   <div class="card" style="background: #fffbeb; border-color: #fef3c7;">
-    <p><strong>Null Hypothesis:</strong> {out.get("null_hypothesis_h0", "H0 verified") if out else "H0 verified"}</p>
+    <p><strong>Null Hypothesis:</strong> {out.get("null_hypothesis_h0", "NOT_EVALUATED: no H0 recorded") if out else "NOT_EVALUATED: no H0 recorded"}</p>
   </div>
 
   <h2>Cryptographic Integrity Signature</h2>

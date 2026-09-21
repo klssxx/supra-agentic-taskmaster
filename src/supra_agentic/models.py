@@ -70,6 +70,8 @@ class VerificationReport(BaseModel):
     vulnerabilities_detected: list[str] = Field(default_factory=list)
     confidence_score: float = 0.0
     verdict: str = "NOT_EVALUATED"  # PASS, CONDITIONAL_PASS, FAIL, NOT_EVALUATED
+    verification_scope: str = "STRATEGY_TEXT_COVERAGE_ONLY"
+    confidence_semantics: str = "fraction_of_declared_invariants_with_textual_coverage"
     rationale: str = ""
     evidence: list[dict[str, Any]] = Field(default_factory=list)
     timestamp: float = Field(default_factory=time.time)
@@ -97,6 +99,7 @@ class RestrictedExecutionResult(BaseModel):
     execution_classification: str = "RESTRICTED_EXECUTION"
     result_scope: str = "RESTRICTED_EXECUTION_ONLY"
     scientific_validation: bool = False
+    identity_bound: bool = False
     process_isolated: bool = False
     secure_for_untrusted_code: bool = False
     timestamp: float = Field(default_factory=time.time)
@@ -114,6 +117,14 @@ class RestrictedExecutionResult(BaseModel):
         if value:
             raise ValueError("restricted execution cannot claim scientific validation")
         return value
+
+    @model_validator(mode="after")
+    def validate_identity_binding(self):
+        if self.identity_bound and not all(
+            (self.candidate_id, self.mechanism_version, self.claim_id, self.protocol_version)
+        ):
+            raise ValueError("identity_bound requires candidate/mechanism/claim/protocol identity")
+        return self
 
 
 class CheckpointRecord(BaseModel):
@@ -142,6 +153,7 @@ class ProjectPosture(BaseModel):
                 result = dict(result)
                 result["side_effects_contained"] = False
                 result.setdefault("execution_classification", "RESTRICTED_EXECUTION")
+                result.setdefault("identity_bound", False)
                 result.setdefault("process_isolated", False)
                 result.setdefault("secure_for_untrusted_code", False)
             migrated_results.append(result)

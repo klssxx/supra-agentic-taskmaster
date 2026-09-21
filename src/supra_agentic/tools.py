@@ -221,7 +221,7 @@ def verify_solution(
     project_id: str,
     candidate_id: str | None = None,
 ) -> dict[str, Any]:
-    """Verify the selected candidate strategy against system invariants and safety policies.
+    """Check textual coverage of mapped invariants in the selected candidate strategy.
 
     Args:
         project_id: The unique project identifier.
@@ -286,10 +286,11 @@ def verify_solution(
             len([e for e in evaluated if e["status"] == "PASS"]) / len(invariants), 3
         )
         rationale = (
-            f"Evidencia ejecutada sobre '{target_candidate.pathway_name}': "
+            f"Cobertura textual heurística sobre '{target_candidate.pathway_name}': "
             f"{len([e for e in evaluated if e['status'] == 'PASS'])}/{len(invariants)} "
-            f"invariantes con prueba PASS, {len(failures)} FAIL, "
-            f"{len(not_evaluated)} NOT_EVALUATED."
+            f"invariantes con cobertura PASS, {len(failures)} FAIL, "
+            f"{len(not_evaluated)} NOT_EVALUATED. "
+            "No equivale a validación del sistema desplegado."
         )
 
     report = VerificationReport(
@@ -299,6 +300,8 @@ def verify_solution(
         vulnerabilities_detected=[f["invariant"] for f in failures],
         confidence_score=confidence,
         verdict=verdict,
+        verification_scope="STRATEGY_TEXT_COVERAGE_ONLY",
+        confidence_semantics="fraction_of_declared_invariants_with_textual_coverage",
         rationale=rationale,
         evidence=evidence,
     )
@@ -342,8 +345,9 @@ def _run_invariant_evidence(
                 {
                     "invariant": invariant,
                     "status": "NOT_EVALUATED",
-                    "test": "sin prueba ejecutable vinculada al candidato",
+                    "test": "sin comprobación textual mapeada para este invariante",
                     "counterexample": "",
+                    "evidence_scope": "STRATEGY_TEXT_COVERAGE_ONLY",
                 }
             )
             continue
@@ -353,8 +357,9 @@ def _run_invariant_evidence(
             {
                 "invariant": invariant,
                 "status": "PASS" if covered else "FAIL",
-                "test": f"el plan/hipótesis del candidato cubre '{keyword}'",
+                "test": f"el texto del plan/hipótesis contiene cobertura para '{keyword}'",
                 "counterexample": "" if covered else counterexample,
+                "evidence_scope": "STRATEGY_TEXT_COVERAGE_ONLY",
             }
         )
     return evidence
@@ -462,6 +467,22 @@ def restricted_python_executor(
             "Explicit Python source requires trusted_internal=True; untrusted code is rejected."
         )
 
+    posture_before = state_manager.get_project(project_id)
+    selected_candidate_id = (
+        posture_before.selected_candidate.candidate_id
+        if posture_before and posture_before.selected_candidate
+        else None
+    )
+    identity_bound = bool(
+        code_snippet is not None
+        and trusted_internal
+        and selected_candidate_id
+        and candidate_id == selected_candidate_id
+        and mechanism_version
+        and claim_id
+        and protocol_version
+    )
+
     code = code_snippet or (
         "def verify_agent_invariant(input_val):\n"
         "    assert input_val is not None, 'Input must not be None'\n"
@@ -489,6 +510,7 @@ def restricted_python_executor(
             observed_result="PASS",
             action_type="TRUSTED_RESTRICTED_PYTHON",
             passed=True,
+            identity_bound=identity_bound,
             output_log=(
                 f"Restricted internal execution passed {fuzz_iterations}/"
                 f"{fuzz_iterations} iterations in {duration_ms:.2f}ms.{suffix}"
@@ -505,6 +527,7 @@ def restricted_python_executor(
             observed_result="FAIL",
             action_type="TRUSTED_RESTRICTED_PYTHON",
             passed=False,
+            identity_bound=identity_bound,
             output_log=f"Restricted internal execution rejected: {exc}"[:MAX_OUTPUT_SIZE],
             duration_ms=round(duration_ms, 2),
         )
@@ -563,6 +586,27 @@ def record_checkpoint(
         else "Standard",
         "verification_verdict": (
             posture.verification.verdict if posture.verification else "NOT_EVALUATED"
+        ),
+        "verification_scope": (
+            posture.verification.verification_scope
+            if posture.verification
+            else "NOT_EVALUATED"
+        ),
+        "completion_scope": "WORKFLOW_TERMINAL_STATE_ONLY",
+        "restricted_execution": (
+            {
+                "passed": posture.restricted_execution_results[-1].passed,
+                "identity_bound": posture.restricted_execution_results[-1].identity_bound,
+                "result_scope": posture.restricted_execution_results[-1].result_scope,
+                "scientific_validation": False,
+            }
+            if posture.restricted_execution_results
+            else {
+                "passed": None,
+                "identity_bound": False,
+                "result_scope": "NOT_EXECUTED",
+                "scientific_validation": False,
+            }
         ),
         "checkpoints_count": len(posture.checkpoints) + 1,
         "timestamp": time.time(),

@@ -193,6 +193,14 @@ def create_and_run_project(req: CreateProjectRequest) -> dict[str, Any] | Respon
             "status": "success",
             "project_id": posture.project_id,
             "stage": posture.stage.value,
+            "verification_verdict": (
+                posture.verification.verdict if posture.verification else "NOT_EVALUATED"
+            ),
+            "verification_scope": (
+                posture.verification.verification_scope
+                if posture.verification
+                else "NOT_EVALUATED"
+            ),
             "posture": posture.model_dump(),
         }
     except Exception as exc:
