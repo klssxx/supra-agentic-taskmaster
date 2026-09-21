@@ -22,10 +22,10 @@ class TaskmasterStage(str, Enum):
 
     @classmethod
     def _missing_(cls, value: object):
-        # Read compatibility for project records written before Option B was
-        # named honestly. New serialization always uses the new stage value.
+        # Legacy SANDBOX_VERIFIED cannot be promoted into the stronger current
+        # execution-accreditation state. Preserve workflow progress only.
         if value == "SANDBOX_VERIFIED":
-            return cls.RESTRICTED_EXECUTION_VERIFIED
+            return cls.STRATIFIED
         return None
 
 
@@ -154,20 +154,60 @@ class ProjectPosture(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def migrate_legacy_execution_telemetry(cls, value: Any) -> Any:
-        if not isinstance(value, dict) or "sandbox_results" not in value:
+        if not isinstance(value, dict):
             return value
         migrated = dict(value)
-        legacy_results = migrated.pop("sandbox_results")
-        migrated_results = []
-        for result in legacy_results if isinstance(legacy_results, list) else []:
-            if isinstance(result, dict):
-                result = dict(result)
-                result["side_effects_contained"] = False
-                result.setdefault("execution_classification", "RESTRICTED_EXECUTION")
-                result.setdefault("process_isolated", False)
-                result.setdefault("secure_for_untrusted_code", False)
-            migrated_results.append(result)
-        migrated["restricted_execution_results"] = migrated_results
+
+        if "sandbox_results" in migrated:
+            legacy_results = migrated.pop("sandbox_results")
+            migrated_results = []
+            for result in legacy_results if isinstance(legacy_results, list) else []:
+                if isinstance(result, dict):
+                    result = dict(result)
+                    result["side_effects_contained"] = False
+                    result.setdefault("execution_classification", "RESTRICTED_EXECUTION")
+                    result.setdefault("process_isolated", False)
+                    result.setdefault("secure_for_untrusted_code", False)
+                    result.setdefault("scientific_validation", False)
+                    result.setdefault("identity_bound", False)
+                migrated_results.append(result)
+            migrated["restricted_execution_results"] = migrated_results
+
+        raw_results = migrated.get("restricted_execution_results")
+        has_bound_pass = False
+        for result in raw_results if isinstance(raw_results, list) else []:
+            if not isinstance(result, dict) or result.get("passed") is not True:
+                continue
+            identity_complete = all(
+                isinstance(result.get(field), str) and bool(result.get(field).strip())
+                for field in (
+                    "candidate_id",
+                    "mechanism_version",
+                    "claim_id",
+                    "protocol_version",
+                    "execution_id",
+                )
+            )
+            if identity_complete:
+                has_bound_pass = True
+                break
+
+        stage = migrated.get("stage")
+        if stage in {"SANDBOX_VERIFIED", "RESTRICTED_EXECUTION_VERIFIED"} and not has_bound_pass:
+            migrated["stage"] = "STRATIFIED"
+            checkpoints = list(migrated.get("checkpoints") or [])
+            checkpoints.append(
+                {
+                    "stage": "STRATIFIED",
+                    "title": "Legacy execution accreditation invalidated",
+                    "evidence_summary": (
+                        "Persisted execution-derived stage was downgraded on load "
+                        "because no bound passing execution satisfies current semantics."
+                    ),
+                    "actor": "system:migration_guard",
+                }
+            )
+            migrated["checkpoints"] = checkpoints
         return migrated
 
     project_id: str
