@@ -247,9 +247,13 @@ class ProjectPosture(BaseModel):
 
     @model_validator(mode="after")
     def revalidate_persisted_execution_accreditation(self) -> "ProjectPosture":
-        if self.stage is not TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED:
-            return self
+        """Revalidate execution-derived state on every load/restart.
 
+        Workflow completion is historical and is not erased. Execution binding,
+        however, is derived state: it must still match the persisted selected
+        candidate under the current semantics. Cached/final-output execution
+        labels are recomputed from that revalidated source state.
+        """
         expected = (
             candidate_execution_identity(self.selected_candidate)
             if self.selected_candidate is not None
@@ -270,7 +274,32 @@ class ProjectPosture(BaseModel):
             if result.passed and matches_selected_candidate:
                 has_authoritative_bound_pass = True
 
-        if not has_authoritative_bound_pass:
+        latest_execution = (
+            self.restricted_execution_results[-1]
+            if self.restricted_execution_results
+            else None
+        )
+        if self.final_output is not None:
+            output = dict(self.final_output)
+            output["restricted_execution_identity_bound"] = bool(
+                latest_execution and latest_execution.identity_bound
+            )
+            output["restricted_execution_status"] = (
+                "BOUND_PASS"
+                if latest_execution and latest_execution.passed and latest_execution.identity_bound
+                else "BOUND_FAIL"
+                if latest_execution and latest_execution.identity_bound
+                else "UNBOUND"
+                if latest_execution
+                else "NOT_RUN"
+            )
+            output["derived_execution_state_revalidated"] = True
+            self.final_output = output
+
+        if (
+            self.stage is TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED
+            and not has_authoritative_bound_pass
+        ):
             self.stage = TaskmasterStage.STRATIFIED
             self.checkpoints.append(
                 CheckpointRecord(
