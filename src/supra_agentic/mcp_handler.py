@@ -70,7 +70,7 @@ MCP_TOOLS_MANIFEST = [
     },
     {
         "name": "supra_verify",
-        "description": "Formulate formal empirical falsification hypothesis (H0) and verify invariants.",
+        "description": "Evaluate supported textual invariant-coverage checks for the persisted selected strategy; this is not scientific validation.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -82,7 +82,7 @@ MCP_TOOLS_MANIFEST = [
     {
         "name": "supra_restricted_execution",
         "description": (
-            "Run SUPRA's fixed trusted internal Python verification. "
+            "Run SUPRA's fixed trusted internal Python check. "
             "This is in-process restricted execution, not a security sandbox; "
             "remote Python source is not accepted."
         ),
@@ -128,7 +128,7 @@ MCP_PROMPTS_MANIFEST = [
     },
     {
         "name": "prompt_falsification_audit",
-        "description": "Audit an AI architecture using Judea Pearl counterfactual invariant testing.",
+        "description": "Review a project with scoped invariant-coverage and counterfactual-inspired prompts; no full Pearl causal-inference implementation is claimed.",
         "arguments": [
             {"name": "project_id", "description": "Project ID to audit", "required": True},
         ],
@@ -183,7 +183,7 @@ def handle_mcp_jsonrpc_request(payload: Mapping[str, Any]) -> dict[str, Any]:
                         "invariants": [
                             "System integrity",
                             "Memory boundary containment",
-                            "Zero-trust verification",
+                            "Explicit trust-boundary checks",
                         ]
                     },
                     indent=2,
