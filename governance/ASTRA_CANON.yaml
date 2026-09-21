@@ -17,199 +17,228 @@ contract_change:
   - evidence
   - review
   conflict_state: ASTRA_CONFLICT
+enforcement_evidence:
+  matrix: docs/ASTRA_COVERAGE_MATRIX.md
+  rule: normative_status_is_not_runtime_enforcement
+  current_branch_remote_ci: NOT_RUN
 contracts:
 - id: ASTRA-001
   name: Separación de estados epistémicos
   status: CANON
-  scopes:
-  - CRIBA
-  - BLACKFORGE
-  - SUPRA
+  scopes: [CRIBA, BLACKFORGE, SUPRA]
   contract:
   - hecho, hipótesis, pendiente, observación, evidencia y decisión permanecen distintos
   - una estructura completa no eleva certeza
   implementation:
-  - src/supra_agentic/dossier.py
   - src/supra_agentic/models.py
+  - src/supra_agentic/state.py
+  - src/supra_agentic/tools.py
+  - src/supra_agentic/web/app.js
   tests:
   - tests/astra_canon/test_astra_supra_contracts.py
+  - tests/astra_canon/test_astra_product_paths.py
+  - tests/astra_canon/test_astra_frontend_contracts.py
   limitations:
-  - Los vocabularios legacy no están unificados; se protege la separación, no una enum única.
+  - COMPLETED significa workflow terminado; no implica PASS ni validación científica.
+  - Los vocabularios legacy no están unificados en una única enum epistémica.
+
 - id: ASTRA-003
   name: Procedencia verificable
   status: CANON
-  scopes:
-  - CRIBA
-  - BLACKFORGE
-  - SUPRA
+  scopes: [CRIBA, BLACKFORGE, SUPRA]
   contract:
   - las afirmaciones derivadas conservan source, transformation, version y scope cuando procede
   - la extracción no se presenta como observación experimental
   implementation:
-  - src/supra_agentic/dossier.py
+  - src/supra_agentic/tools.py
   - src/supra_agentic/models.py
   tests:
-  - tests/astra_canon/test_astra_supra_contracts.py
+  - tests/astra_canon/test_astra_product_paths.py
   limitations:
-  - La procedencia universal sigue limitada a componentes que ya emiten evidencia.
+  - La procedencia emitida por SUPRA cubre su telemetry y transforms conocidos; no es un sistema universal de provenance.
+
+- id: ASTRA-006
+  name: Score con significado delimitado
+  status: CANON
+  scopes: [CRIBA, BLACKFORGE, SUPRA]
+  contract:
+  - todo score declara objetivo, escala, cobertura y heurística vs medición cuando aplica
+  - un score interno no se presenta como probabilidad real de éxito sin soporte
+  implementation:
+  - src/supra_agentic/models.py
+  - src/supra_agentic/tools.py
+  tests:
+  - tests/astra_canon/test_astra_product_paths.py
+  limitations:
+  - confidence_score es una fracción de cobertura heurística textual; no probabilidad de éxito real.
+
 - id: ASTRA-017
   name: Planificación != ejecución
   status: CANON
-  scopes:
-  - CRIBA
-  - SUPRA
+  scopes: [CRIBA, SUPRA]
   contract:
   - planned test no equivale a executed test
   - generic restricted execution success no equivale a scientific validation
   implementation:
   - src/supra_agentic/models.py
   - src/supra_agentic/state.py
+  - src/supra_agentic/tools.py
   tests:
   - tests/astra_canon/test_astra_supra_contracts.py
+  - tests/astra_canon/test_astra_product_paths.py
   limitations:
-  - La ejecución restringida acredita solo su propio protocolo.
+  - La ejecución restringida acredita únicamente su propio protocolo interno y solo avanza de etapa si la identidad está ligada al candidato persistido.
+
 - id: ASTRA-018
   name: Pertinencia discriminante
   status: CANON
-  scopes:
-  - CRIBA
-  - SUPRA
+  scopes: [CRIBA, SUPRA]
   contract:
   - una prueba relaciona claim, rival explanation, intervention/test, observable, predictions y decision rule
   - una observación no discriminante es INCONCLUSIVE
   implementation:
-  - src/supra_agentic/dossier.py
+  - src/supra_agentic/tools.py
   tests:
-  - tests/astra_canon/test_astra_supra_contracts.py
+  - tests/astra_canon/test_astra_product_paths.py
   limitations:
-  - No construye nueva infraestructura experimental.
+  - SUPRA no implementa todavía un protocolo científico discriminante completo.
+  - El deliverable lo declara como NOT_ESTABLISHED y no promociona restricted execution a validación científica.
+
 - id: ASTRA-019
   name: Canales epistémicos separados
   status: CANON
-  scopes:
-  - CRIBA
-  - BLACKFORGE
-  - SUPRA
+  scopes: [CRIBA, BLACKFORGE, SUPRA]
   contract:
   - prior-art, judge y observed result permanecen separados hasta consumidor
   - combinar canales requiere semántica explícita
   implementation:
-  - src/supra_agentic/tools.py
   - src/supra_agentic/models.py
+  - src/supra_agentic/tools.py
   tests:
-  - tests/astra_canon/test_astra_supra_contracts.py
+  - tests/astra_canon/test_astra_product_paths.py
   limitations:
-  - No define un agregador científico nuevo.
+  - SUPRA mantiene por separado workflow, coverage verification, restricted execution y scientific status.
+
 - id: ASTRA-020
   name: Resultado elegible para learning
   status: CANON
-  scopes:
-  - CRIBA
-  - SUPRA
+  scopes: [CRIBA, SUPRA]
   contract:
   - INDETERMINATE, INVALID y NOT_EVALUATED no generan reward observado
   implementation:
-  - src/supra_agentic/dossier.py
-  - src/supra_agentic/models.py
+  - src/supra_agentic/tools.py
   tests:
-  - tests/astra_canon/test_astra_supra_contracts.py
+  - tests/astra_canon/test_astra_product_paths.py
   limitations:
-  - Los veredictos teóricos se conservan como canal separado y no son outcome observado.
+  - SUPRA no aplica adaptive learning desde estos verdicts; learning_update_status queda NOT_APPLICABLE.
+
 - id: ASTRA-024
   name: Reproducibilidad por cierre de dependencias
   status: CANON_WITH_LIMITATIONS
-  scopes:
-  - CRIBA
-  - BLACKFORGE
-  - SUPRA
+  scopes: [CRIBA, BLACKFORGE, SUPRA]
   contract:
-  - seed y store hash no prometen reproducibilidad global si influyen clock, policy version, corpus, config, provider,
-    ordering, code version o external state
+  - seed y store hash no prometen reproducibilidad global si influyen clock, policy version, corpus, config, provider, ordering, code version o external state
   - se registran las dependencias reales conocidas del componente
   implementation:
-  - src/supra_agentic/dossier.py
   - src/supra_agentic/tools.py
   tests:
-  - tests/astra_canon/test_astra_supra_contracts.py
+  - tests/astra_canon/test_astra_product_paths.py
   limitations:
-  - No implementa un sistema universal de provenance.
+  - El ledger declara closure_complete false mientras code/runtime/provider/environment no estén completamente cerrados.
+
 - id: ASTRA-026
   name: Oportunidades equivalentes
   status: CANON
-  scopes:
-  - CRIBA
-  - BLACKFORGE
-  - SUPRA
+  scopes: [CRIBA, BLACKFORGE, SUPRA]
   contract:
-  - comparaciones contabilizan generation calls, retries, candidate opportunities, selection opportunities, evaluation
-    calls y budget
+  - comparaciones contabilizan generation calls, retries, candidate opportunities, selection opportunities, evaluation calls y budget
   implementation:
-  - src/supra_agentic/models.py
+  - src/supra_agentic/tools.py
   tests:
-  - tests/astra_canon/test_astra_supra_contracts.py
+  - tests/astra_canon/test_astra_product_paths.py
   limitations:
-  - La instrumentación es mínima y no pretende telemetría universal.
+  - SUPRA registra oportunidades locales y restricted attempts.
+  - provider_generation_calls permanece no autoritativo y budget_complete false hasta instrumentación completa.
+
+- id: ASTRA-027
+  name: Confirmación independiente
+  status: CANON
+  scopes: [CRIBA, BLACKFORGE, SUPRA]
+  contract:
+  - datos usados para desarrollo no vuelven a considerarse confirmatorios independientes
+  implementation:
+  - src/supra_agentic/tools.py
+  - docs/ASTRA_CANON.md
+  tests:
+  - tests/astra_canon/test_astra_product_paths.py
+  - tests/astra_canon/test_astra_manifest.py
+  limitations:
+  - SUPRA no ejecuta campañas confirmatorias independientes.
+  - independent_confirmation_status permanece NOT_ESTABLISHED.
+
 - id: ASTRA-028
   name: Evaluador sometido a control
   status: CANON
-  scopes:
-  - CRIBA
-  - SUPRA
+  scopes: [CRIBA, SUPRA]
   contract:
-  - para claims fuertes se documentan blinding, positive controls, negative controls, disagreement y limits cuando
-    aplican
+  - para claims fuertes se documentan blinding, positive controls, negative controls, disagreement y limits cuando aplican
   implementation:
-  - src/supra_agentic/dossier.py
-  - src/supra_agentic/state.py
+  - src/supra_agentic/tools.py
   tests:
-  - tests/astra_canon/test_astra_supra_contracts.py
+  - tests/astra_canon/test_astra_product_paths.py
   limitations:
-  - Los evaluadores actuales no satisfacen por sí solos claims fuertes.
+  - Los controles científicos fuertes no están implementados.
+  - El payload declara blinding/controls/disagreement false y strong_scientific_claims_supported false.
+
 - id: ASTRA-031
   name: Nombre algorítmico no acredita capacidad
   status: CANON
-  scopes:
-  - CRIBA
-  - BLACKFORGE
-  - SUPRA
+  scopes: [CRIBA, BLACKFORGE, SUPRA]
   contract:
   - nombres como Pareto, MAP-Elites, do-calculus o causal no acreditan implementación completa
   - las capacidades se describen por contrato real
   implementation:
+  - src/supra_agentic/mcp_handler.py
   - src/supra_agentic/tools.py
+  - README.md
+  - docs/ARCHITECTURE.md
   tests:
-  - tests/astra_canon/test_astra_supra_contracts.py
+  - tests/astra_canon/test_astra_frontend_contracts.py
   limitations:
-  - Los modos simplificados quedan etiquetados como heurísticos.
+  - Las referencias counterfactual-inspired no se presentan como implementación completa de Pearl/do-calculus.
+
 - id: ASTRA-033
   name: Preservación de fallos
   status: CANON
-  scopes:
-  - CRIBA
-  - BLACKFORGE
-  - SUPRA
+  scopes: [CRIBA, BLACKFORGE, SUPRA]
   contract:
   - una reparación no borra negative evidence, historical failures ni original protocols
   - un hash acredita integridad relativa a una referencia, no verdad
   implementation:
+  - src/supra_agentic/state.py
+  - src/supra_agentic/tools.py
   - src/supra_agentic/dossier.py
   tests:
-  - tests/astra_canon/test_astra_supra_contracts.py
+  - tests/astra_canon/test_astra_product_paths.py
+  - tests/astra_canon/test_astra_frontend_contracts.py
   limitations:
-  - Los artefactos históricos se preservan; no se reinterpretan.
+  - Restricted attempts se preservan append-style en el posture.
+  - SHA-256 se describe únicamente como integridad del payload serializado.
+
 - id: ASTRA-034
   name: Promoción explícita
   status: CANON
-  scopes:
-  - CRIBA
-  - BLACKFORGE
-  - SUPRA
+  scopes: [CRIBA, BLACKFORGE, SUPRA]
   contract:
   - cambiar un contrato requiere versioned decision, evidence y review
   - cambiar implementación conservando contrato está permitido
   implementation:
-  - src/supra_agentic/dossier.py
+  - governance/ASTRA_CANON.yaml
+  - docs/ASTRA_AGENT_POLICY.md
+  - .github/CODEOWNERS
+  - .github/workflows/ci.yml
   tests:
-  - tests/astra_canon/test_astra_supra_contracts.py
+  - tests/astra_canon/test_astra_manifest.py
   limitations:
   - CODEOWNERS solo informa hasta que un ruleset exija revisión.
+  - El enforcement server-side de branch protection/rulesets no está verificado por esta rama.
