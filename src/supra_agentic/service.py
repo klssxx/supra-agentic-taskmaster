@@ -46,7 +46,7 @@ CORS_ORIGINS = _parse_cors_origins(os.getenv("SUPRA_CORS_ORIGINS"))
 app = FastAPI(
     title="SUPRA Agentic Taskmaster",
     version="1.0.0",
-    description="Provider-neutral autonomous task decomposition, verification, and evidence generation.",
+    description="Provider-neutral task decomposition, scoped strategy-coverage evaluation, restricted execution telemetry, and evidence generation.",
 )
 
 # Enable CORS - configurable, default restrictive (empty list = no CORS)
@@ -189,8 +189,19 @@ def create_and_run_project(req: CreateProjectRequest) -> dict[str, Any] | Respon
                 media_type="application/json",
             )
 
+        final_output = posture.final_output or {}
         return {
             "status": "success",
+            "workflow_status": posture.stage.value,
+            "verification_status": (
+                posture.verification.verdict if posture.verification else "NOT_EVALUATED"
+            ),
+            "verification_scope": (
+                posture.verification.verification_scope
+                if posture.verification
+                else "TEXTUAL_STRATEGY_COVERAGE"
+            ),
+            "scientific_status": final_output.get("scientific_status", "NOT_VALIDATED"),
             "project_id": posture.project_id,
             "stage": posture.stage.value,
             "posture": posture.model_dump(),
@@ -274,6 +285,13 @@ def example_quick_run() -> dict[str, Any]:
         "status": "success",
         "example": True,
         "stages_completed": 5,
+        "workflow_status": posture.stage.value,
+        "verification_status": (
+            posture.verification.verdict if posture.verification else "NOT_EVALUATED"
+        ),
+        "scientific_status": (
+            (posture.final_output or {}).get("scientific_status", "NOT_VALIDATED")
+        ),
         "project_id": posture.project_id,
         "stage": posture.stage.value,
         "deliverable": posture.final_output,
@@ -330,6 +348,12 @@ def export_technical_dossier(project_id: str) -> dict[str, Any]:
     cand = posture.selected_candidate
     ver = posture.verification
     out = posture.final_output
+    confidence_text = f"{ver.confidence_score:.2f}" if ver else "N/A"
+    verification_text = ver.verdict if ver else "NOT_EVALUATED"
+    verification_scope = ver.verification_scope if ver else "TEXTUAL_STRATEGY_COVERAGE"
+    h0_text = out.get("null_hypothesis_h0", "NOT_SPECIFIED") if out else "NOT_SPECIFIED"
+    h0_status = out.get("h0_evaluation_status", "NOT_EVALUATED") if out else "NOT_EVALUATED"
+    scientific_status = out.get("scientific_status", "NOT_VALIDATED") if out else "NOT_VALIDATED"
 
     md_lines = [
         f"# TECHNICAL DOSSIER: {posture.objective}",
@@ -361,12 +385,15 @@ def export_technical_dossier(project_id: str) -> dict[str, Any]:
             f"- **Hypothesis:** {cand.hypothesis if cand else 'N/A'}",
             f"- **Feasibility:** {cand.feasibility_score if cand else 0.0:.2f} | **Divergence:** {cand.divergence_score if cand else 0.0:.2f}",
             "",
-            "## 3. Verification & Restricted Execution Telemetry",
-            f"- **Verdict:** `{ver.verdict if ver else 'N/A'}` (Confidence: {ver.confidence_score if ver else 0.0:.2f})",
-            f"- **Rationale:** {ver.rationale if ver else 'N/A'}",
+            "## 3. Strategy Coverage & Restricted Execution Telemetry",
+            f"- **Coverage Verdict:** `{verification_text}` (Coverage fraction: {confidence_text})",
+            f"- **Scope:** `{verification_scope}`",
+            f"- **Rationale:** {ver.rationale if ver else 'No coverage evaluation available.'}",
             "",
             "## 4. Empirical Falsification (H0)",
-            f"- **Null Hypothesis:** `{out.get('null_hypothesis_h0', 'N/A') if out else 'N/A'}`",
+            f"- **Null Hypothesis:** `{h0_text}`",
+            f"- **H0 Evaluation Status:** `{h0_status}`",
+            f"- **Scientific Status:** `{scientific_status}`",
             "",
             "## 5. Checkpoints Timeline",
         ]
