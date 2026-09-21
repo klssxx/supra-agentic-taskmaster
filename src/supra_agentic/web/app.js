@@ -62,12 +62,12 @@ function setUIState(status, stage, posture) {
     const stageTag = document.getElementById('current-stage-tag');
     stageTag.innerText = stage || status;
     
-    const steps = ['received', 'structured', 'stratified', 'sandbox', 'completed'];
+    const steps = ['received', 'structured', 'stratified', 'restricted', 'completed'];
     const stageOrder = {
         'RECEIVED': 0,
         'STRUCTURED': 1,
         'STRATIFIED': 2,
-        'SANDBOX_VERIFIED': 3,
+        'RESTRICTED_EXECUTION_VERIFIED': 3,
         'COMPLETED': 4
     };
 
@@ -96,7 +96,7 @@ function renderProjectPosture(posture) {
     const decomp = posture.decomposition;
     const cand = posture.selected_candidate;
     const ver = posture.verification;
-    const sb = posture.sandbox_results && posture.sandbox_results[posture.sandbox_results.length - 1];
+    const rex = posture.restricted_execution_results && posture.restricted_execution_results[posture.restricted_execution_results.length - 1];
     const out = posture.final_output;
 
     let html = `
@@ -135,17 +135,18 @@ function renderProjectPosture(posture) {
         </div>
 
         <div class="result-section">
-            <h4>03. System Verification & Micro-Sandbox Telemetry</h4>
+            <h4>03. Strategy Coverage & Restricted Execution Telemetry</h4>
             <div style="font-size: 0.85rem;">
-                <strong>Verdict:</strong> <span style="color: #10B981; font-weight: 700;">${ver ? ver.verdict : 'PASS'}</span> 
-                (Confidence: ${ver ? (ver.confidence_score * 100).toFixed(1) : 95}%)
+                <strong>Coverage Verdict:</strong> <span style="font-weight: 700;">${ver ? ver.verdict : 'NOT_EVALUATED'}</span>
+                (Coverage fraction: ${ver ? (ver.confidence_score * 100).toFixed(1) + '%' : 'N/A'})
             </div>
             <div style="font-size: 0.8rem; color: #94A3B8; margin-top: 0.25rem;">
-                ${ver ? ver.rationale : 'All system invariants rigorously satisfied.'}
+                ${ver ? ver.rationale : 'No strategy-coverage evaluation is available.'}
             </div>
-            ${sb ? `
+            ${rex ? `
                 <div style="background: #000; padding: 0.5rem; border-radius: 4px; font-family: monospace; font-size: 0.75rem; color: #00FFCC; margin-top: 0.5rem;">
-                    [SANDBOX PASS] ${sb.output_log} (${sb.duration_ms}ms)
+                    [RESTRICTED EXECUTION ${rex.passed ? 'PASS' : 'FAIL'} | IDENTITY ${rex.identity_bound ? 'BOUND' : 'UNBOUND'}]
+                    ${rex.output_log} (${rex.duration_ms}ms)
                 </div>
             ` : ''}
         </div>
@@ -153,7 +154,8 @@ function renderProjectPosture(posture) {
         <div class="result-section">
             <h4>04. Empirical Falsification Hypothesis (H0)</h4>
             <div style="font-size: 0.8rem; color: #F59E0B; background: rgba(245, 158, 11, 0.08); padding: 0.6rem; border-radius: 6px; border: 1px solid rgba(245, 158, 11, 0.2);">
-                <strong>Falsifiable Null Hypothesis:</strong> ${out && out.null_hypothesis_h0 ? out.null_hypothesis_h0 : 'H0 verified against baseline.'}
+                <strong>Falsifiable Null Hypothesis:</strong> ${out && out.null_hypothesis_h0 ? out.null_hypothesis_h0 : 'NOT_SPECIFIED'}<br>
+                <strong>Evaluation:</strong> ${out && out.h0_evaluation_status ? out.h0_evaluation_status : 'NOT_EVALUATED'}
             </div>
         </div>
 
@@ -172,7 +174,7 @@ function renderProjectPosture(posture) {
     // Show Export Bar
     const exportBar = document.getElementById('export-bar');
     exportBar.style.display = 'flex';
-    document.getElementById('final-audit-hash').innerText = out && out.audit_sha256 ? out.audit_sha256 : 'VERIFIED';
+    document.getElementById('final-audit-hash').innerText = out && out.audit_sha256 ? out.audit_sha256 : 'NOT_AVAILABLE';
 }
 
 async function handleExportDossier() {
