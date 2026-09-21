@@ -8,7 +8,7 @@ SUPRA is split into four explicit boundaries:
 2. **Provider facade** — a small typed contract for Hermes/Nous, Ollama,
    OpenAI, and arbitrary OpenAI-compatible endpoints.
 3. **Deterministic coordinator** — five stateful stages with safety gates and
-   bounded sandbox execution.
+   bounded, trusted in-process restricted execution.
 4. **Evidence** — thread-safe project persistence plus JSON, Markdown, and HTML
    dossier exports with a SHA-256 integrity value.
 
@@ -27,12 +27,15 @@ deterministic project state.
 ## State flow
 
 ```text
-RECEIVED -> STRUCTURED -> STRATIFIED -> SANDBOX_VERIFIED -> COMPLETED
+RECEIVED -> STRUCTURED -> STRATIFIED -> [RESTRICTED_EXECUTION_VERIFIED] -> COMPLETED
 ```
 
-Each transition writes a checkpoint containing the actor, evidence summary, and
-timestamp. `record_checkpoint` serializes the final deliverable in sorted JSON
-before computing the integrity digest.
+`RESTRICTED_EXECUTION_VERIFIED` is optional and is reached only by a passing,
+identity-bound trusted internal check. Generic checks are recorded without
+promoting the stage. `COMPLETED` is a terminal workflow state, not a scientific
+validation claim. Each transition writes a checkpoint containing the actor,
+evidence summary, and timestamp. `record_checkpoint` serializes the final
+deliverable in sorted JSON before computing the integrity digest.
 
 ## Safety model
 
@@ -41,8 +44,8 @@ before computing the integrity digest.
   `SUPRA_USE_MODEL=true`.
 - Model output is advisory and recorded separately from deterministic evidence.
 - Provider HTTP errors exclude response bodies and authorization headers.
-- The sandbox accepts only the constrained actions implemented by
-  `execute_sandbox_action`.
+- Restricted execution accepts only trusted internal Python at the direct API;
+  the remote MCP boundary does not accept source code. It is not process-isolated.
 
 ## Extension points
 

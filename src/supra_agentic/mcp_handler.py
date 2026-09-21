@@ -70,7 +70,7 @@ MCP_TOOLS_MANIFEST = [
     },
     {
         "name": "supra_verify",
-        "description": "Formulate formal empirical falsification hypothesis (H0) and verify invariants.",
+        "description": "Check mapped invariant coverage in candidate strategy text; this is heuristic coverage, not scientific validation.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -128,7 +128,7 @@ MCP_PROMPTS_MANIFEST = [
     },
     {
         "name": "prompt_falsification_audit",
-        "description": "Audit an AI architecture using Judea Pearl counterfactual invariant testing.",
+        "description": "Audit recorded strategy and verification evidence with explicit scope and falsification limits.",
         "arguments": [
             {"name": "project_id", "description": "Project ID to audit", "required": True},
         ],

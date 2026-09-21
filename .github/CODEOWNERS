@@ -3,6 +3,7 @@
 .github/CODEOWNERS @klssxx
 governance/ASTRA_CANON.yaml @klssxx
 docs/ASTRA_CANON.md @klssxx
+docs/ASTRA_AGENT_POLICY.md @klssxx
 docs/ASTRA_COVERAGE_MATRIX.md @klssxx
 tests/astra_canon/** @klssxx
 src/supra_agentic/models.py @klssxx
@@ -10,3 +11,10 @@ src/supra_agentic/state.py @klssxx
 src/supra_agentic/tools.py @klssxx
 src/supra_agentic/dossier.py @klssxx
 src/supra_agentic/integrations/criba_bridge.py @klssxx
+
+README.md @klssxx
+src/supra_agentic/runner.py @klssxx
+src/supra_agentic/service.py @klssxx
+src/supra_agentic/mcp_handler.py @klssxx
+src/supra_agentic/web/app.js @klssxx
+src/supra_agentic/web/index.html @klssxx
