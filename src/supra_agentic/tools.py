@@ -402,9 +402,47 @@ def _invariant_check(invariant_casefold: str) -> tuple[str, str] | None:
 # ---------------------------------------------------------------------------
 # Tool 4: trusted restricted Python execution (NOT a security sandbox)
 # ---------------------------------------------------------------------------
+RESTRICTED_PROTOCOL_FAMILY = "supra-restricted-internal-v2"
 MAX_FUZZ_ITERATIONS = 100
 MAX_CODE_SIZE = 64 * 1024
 MAX_OUTPUT_SIZE = 64 * 1024
+
+
+def _selected_candidate_identity(project_id: str) -> dict[str, str] | None:
+    """Resolve execution identity from persisted SUPRA state, never caller claims."""
+    posture = state_manager.get_project(project_id)
+    if posture is None:
+        raise KeyError(f"Project '{project_id}' not found.")
+    candidate = posture.selected_candidate
+    if candidate is None:
+        return None
+    mechanism_payload = json.dumps(
+        {
+            "candidate_id": candidate.candidate_id,
+            "pathway_name": candidate.pathway_name,
+            "hypothesis": candidate.hypothesis,
+            "action_plan": candidate.action_plan,
+        },
+        sort_keys=True,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    mechanism_version = "sha256:" + hashlib.sha256(
+        mechanism_payload.encode("utf-8")
+    ).hexdigest()
+    claim_id = "claim-" + hashlib.sha256(
+        candidate.hypothesis.encode("utf-8")
+    ).hexdigest()[:24]
+    return {
+        "candidate_id": candidate.candidate_id,
+        "mechanism_version": mechanism_version,
+        "claim_id": claim_id,
+    }
+
+
+def _protocol_version_for_code(code: str) -> str:
+    payload = f"{RESTRICTED_PROTOCOL_FAMILY}\n{code}"
+    return "sha256:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 class _BoundedTextIO(io.StringIO):
@@ -454,6 +492,11 @@ def restricted_python_executor(
     This is not a security sandbox, has no OS/process isolation, and must not
     receive arbitrary remote or user-supplied Python. Any explicit source code
     requires the caller to opt into the trusted internal contract.
+
+    Execution identity is resolved from the persisted selected candidate. Caller
+    identity arguments are compatibility assertions only: when a selected
+    candidate exists they must match the resolved identity and can never create
+    accreditation by themselves.
     """
     if not 1 <= fuzz_iterations <= MAX_FUZZ_ITERATIONS:
         raise ValueError(f"fuzz_iterations must satisfy 1 <= value <= {MAX_FUZZ_ITERATIONS}")
@@ -471,6 +514,29 @@ def restricted_python_executor(
     if len(code.encode("utf-8")) > MAX_CODE_SIZE:
         raise ValueError(f"Code exceeds MAX_CODE_SIZE ({MAX_CODE_SIZE} bytes)")
 
+    resolved_identity = _selected_candidate_identity(project_id)
+    resolved_protocol = _protocol_version_for_code(code)
+    if resolved_identity is not None:
+        assertions = {
+            "candidate_id": candidate_id,
+            "mechanism_version": mechanism_version,
+            "claim_id": claim_id,
+        }
+        for field, supplied in assertions.items():
+            if supplied is not None and supplied != resolved_identity[field]:
+                raise ValueError(f"{field} does not match persisted selected candidate")
+        if protocol_version is not None and protocol_version != resolved_protocol:
+            raise ValueError("protocol_version does not match executed restricted protocol")
+        bound_candidate_id = resolved_identity["candidate_id"]
+        bound_mechanism_version = resolved_identity["mechanism_version"]
+        bound_claim_id = resolved_identity["claim_id"]
+    else:
+        # A generic internal check may still run, but without a selected
+        # candidate it cannot advance an evidence-bearing execution stage.
+        bound_candidate_id = None
+        bound_mechanism_version = None
+        bound_claim_id = None
+
     start_time = time.monotonic()
     try:
         parsed = ast.parse(code)
@@ -482,10 +548,10 @@ def restricted_python_executor(
         duration_ms = (time.monotonic() - start_time) * 1000
         suffix = f" Captured {len(captured)} bytes." if captured else ""
         result = RestrictedExecutionResult(
-            candidate_id=candidate_id,
-            mechanism_version=mechanism_version,
-            claim_id=claim_id,
-            protocol_version=protocol_version,
+            candidate_id=bound_candidate_id,
+            mechanism_version=bound_mechanism_version,
+            claim_id=bound_claim_id,
+            protocol_version=resolved_protocol,
             observed_result="PASS",
             action_type="TRUSTED_RESTRICTED_PYTHON",
             passed=True,
@@ -498,10 +564,10 @@ def restricted_python_executor(
     except Exception as exc:
         duration_ms = (time.monotonic() - start_time) * 1000
         result = RestrictedExecutionResult(
-            candidate_id=candidate_id,
-            mechanism_version=mechanism_version,
-            claim_id=claim_id,
-            protocol_version=protocol_version,
+            candidate_id=bound_candidate_id,
+            mechanism_version=bound_mechanism_version,
+            claim_id=bound_claim_id,
+            protocol_version=resolved_protocol,
             observed_result="FAIL",
             action_type="TRUSTED_RESTRICTED_PYTHON",
             passed=False,
