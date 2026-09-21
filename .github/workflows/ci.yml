@@ -163,7 +163,7 @@ jobs:
           set -euo pipefail
           archive="trivy_0.72.0_Linux-64bit.tar.gz"
           toolDir="trivy-0.72.0"
-          expected="ed3cf122060f61818fe1f735fd97557954e16e10bc8b058af9852271cf2e91b3"
+          expected="bbb64b9695866ce4a7a8f5c9592002c5961cab378577fa3f8a040df362b9b2ea"
           curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/v0.72.0/${archive}" -o "${archive}"
           actual=$(sha256sum "${archive}" | cut -d' ' -f1)
           if [ "${actual}" != "${expected}" ]; then
