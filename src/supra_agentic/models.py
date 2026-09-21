@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 import uuid
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -62,14 +62,19 @@ class StrategyCandidate(BaseModel):
 
 
 class VerificationReport(BaseModel):
+    """Scoped strategy-coverage report, not deployed-system certification."""
+
     model_config = ConfigDict(extra="forbid")
     report_id: str = Field(default_factory=lambda: f"rep-{uuid.uuid4().hex[:6]}")
     candidate_id: str
     invariants_preserved: bool = False
     invariants_checked: list[str] = Field(default_factory=list)
     vulnerabilities_detected: list[str] = Field(default_factory=list)
-    confidence_score: float = 0.0
-    verdict: str = "NOT_EVALUATED"  # PASS, CONDITIONAL_PASS, FAIL, NOT_EVALUATED
+    confidence_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    verdict: Literal["PASS", "CONDITIONAL_PASS", "FAIL", "NOT_EVALUATED"] = "NOT_EVALUATED"
+    verification_scope: Literal["TEXTUAL_STRATEGY_COVERAGE"] = "TEXTUAL_STRATEGY_COVERAGE"
+    measurement_kind: Literal["HEURISTIC_COVERAGE"] = "HEURISTIC_COVERAGE"
+    confidence_semantics: str = "FRACTION_OF_DECLARED_INVARIANTS_WITH_HEURISTIC_PASS"
     rationale: str = ""
     evidence: list[dict[str, Any]] = Field(default_factory=list)
     timestamp: float = Field(default_factory=time.time)
@@ -99,6 +104,7 @@ class RestrictedExecutionResult(BaseModel):
     scientific_validation: bool = False
     process_isolated: bool = False
     secure_for_untrusted_code: bool = False
+    identity_bound: bool = False
     timestamp: float = Field(default_factory=time.time)
 
     @field_validator("side_effects_contained", "process_isolated", "secure_for_untrusted_code")
@@ -114,6 +120,21 @@ class RestrictedExecutionResult(BaseModel):
         if value:
             raise ValueError("restricted execution cannot claim scientific validation")
         return value
+
+    @model_validator(mode="after")
+    def derive_identity_binding(self) -> "RestrictedExecutionResult":
+        complete = all(
+            isinstance(value, str) and bool(value.strip())
+            for value in (
+                self.candidate_id,
+                self.mechanism_version,
+                self.claim_id,
+                self.protocol_version,
+                self.execution_id,
+            )
+        )
+        self.identity_bound = complete
+        return self
 
 
 class CheckpointRecord(BaseModel):
