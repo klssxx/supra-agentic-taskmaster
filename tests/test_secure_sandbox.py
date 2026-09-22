@@ -80,7 +80,7 @@ def test_secure_docker_command_enforces_isolation_controls(
         "--network=none",
         "--read-only",
         "--cap-drop=ALL",
-        "--security-opt=no-new-privileges",
+        "--security-opt=no-new-privileges=true",
         "--user=65534:65534",
         "--pids-limit=32",
         "--memory=128m",
@@ -93,7 +93,7 @@ def test_secure_docker_command_enforces_isolation_controls(
 
     assert image_id in run_cmd
     assert "python:test" not in run_cmd
-    assert run_cmd[-3:] == ["python", "-I", "/opt/supra/runner.py"]
+    assert run_cmd[-3:] == ["python", "-I", "/runner.py"]
     mount_index = run_cmd.index("--mount")
     assert "readonly" in run_cmd[mount_index + 1]
 
