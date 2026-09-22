@@ -145,7 +145,6 @@ def test_sandbox_source_contains_no_in_process_exec_fallback() -> None:
     assert "--pull=never" in source
 
 
-
 def test_secure_sandbox_runtime_race_fails_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
