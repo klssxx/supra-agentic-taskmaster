@@ -42,13 +42,20 @@ def test_quick_run_example():
         data = response.json()
         assert data["example"] is True
         assert data["completion_status"] in {"COMPLETED", "BLOCKED"}
-        if data["verification_status"] in {"FAIL", "NOT_EVALUATED"}:
+        assert data["secure_sandbox_status"] in {
+            "ISOLATED_BOUND_PASS",
+            "ISOLATED_BOUND_FAIL",
+            "UNVERIFIED_ISOLATION",
+            "NOT_RUN",
+        }
+        if data["completion_status"] == "BLOCKED":
             assert data["status"] == "blocked"
             assert data["stage"] != "COMPLETED"
             assert data["deliverable"] is None
         else:
             assert data["status"] == "success"
             assert data["stage"] == "COMPLETED"
+            assert data["secure_sandbox_status"] == "ISOLATED_BOUND_PASS"
             assert "audit_sha256" in data["deliverable"]
             assert "null_hypothesis_h0" in data["deliverable"]
 
@@ -90,7 +97,7 @@ def test_webmcp_jsonrpc_protocol():
         assert call_res.status_code == 200
         payload = json.loads(call_res.json()["result"]["content"][0]["text"])
         assert payload["completion_status"] in {"COMPLETED", "BLOCKED"}
-        if payload["verification_status"] in {"FAIL", "NOT_EVALUATED"}:
+        if payload["completion_status"] == "BLOCKED":
             assert payload["status"] == "blocked"
             assert payload["workflow_status"] != "COMPLETED"
         else:

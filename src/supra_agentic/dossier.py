@@ -29,6 +29,23 @@ def generate_svg_architecture(posture: ProjectPosture) -> str:
         if latest_execution
         else "NOT_RUN"
     )
+    latest_sandbox = (
+        posture.secure_sandbox_results[-1] if posture.secure_sandbox_results else None
+    )
+    sandbox_status = _html(
+        "ISOLATED_BOUND_PASS"
+        if latest_sandbox
+        and latest_sandbox.passed
+        and latest_sandbox.identity_bound
+        and latest_sandbox.isolation_verified
+        else "ISOLATED_BOUND_FAIL"
+        if latest_sandbox
+        and latest_sandbox.identity_bound
+        and latest_sandbox.isolation_verified
+        else "UNVERIFIED_ISOLATION"
+        if latest_sandbox
+        else "NOT_RUN"
+    )
 
     return f"""<svg width="720" height="200" viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg">
   <defs>
@@ -59,11 +76,12 @@ def generate_svg_architecture(posture: ProjectPosture) -> str:
   <text x="300" y="95" fill="#F0F4F8" font-family="sans-serif" font-size="11" font-weight="bold" text-anchor="middle">02. STRATEGY</text>
   <text x="300" y="115" fill="#00FFCC" font-family="monospace" font-size="9" text-anchor="middle">{cand_name[:14]}...</text>
 
-  <!-- Node 3: Scoped coverage + restricted execution -->
+  <!-- Node 3: Scoped coverage + execution gates -->
   <rect x="460" y="60" width="120" height="80" rx="6" fill="#131822" stroke="#00FFCC" stroke-width="1.5"/>
   <text x="520" y="90" fill="#F0F4F8" font-family="sans-serif" font-size="11" font-weight="bold" text-anchor="middle">03. CHECKS</text>
   <text x="520" y="108" fill="#10B981" font-family="monospace" font-size="9" text-anchor="middle">Coverage: {verdict}</text>
-  <text x="520" y="124" fill="#94A3B8" font-family="monospace" font-size="8" text-anchor="middle">Restricted: {restricted_status}</text>
+  <text x="520" y="121" fill="#94A3B8" font-family="monospace" font-size="7.5" text-anchor="middle">Restricted: {restricted_status}</text>
+  <text x="520" y="133" fill="#94A3B8" font-family="monospace" font-size="7.5" text-anchor="middle">Sandbox: {sandbox_status}</text>
 
   <!-- Node 4: Final Deliverable -->
   <circle cx="660" cy="100" r="28" fill="url(#tealGrad)"/>
@@ -94,6 +112,38 @@ def export_full_html_dossier(posture: ProjectPosture) -> str:
     h0_text = _html(h0 if h0 else "NOT_SPECIFIED")
     h0_status_text = _html(h0_status)
     scientific_status_text = _html(scientific_status)
+    latest_execution = (
+        posture.restricted_execution_results[-1] if posture.restricted_execution_results else None
+    )
+    latest_sandbox = (
+        posture.secure_sandbox_results[-1] if posture.secure_sandbox_results else None
+    )
+    restricted_status_text = _html(
+        "BOUND_PASS"
+        if latest_execution and latest_execution.passed and latest_execution.identity_bound
+        else "BOUND_FAIL"
+        if latest_execution and latest_execution.identity_bound
+        else "UNBOUND"
+        if latest_execution
+        else "NOT_RUN"
+    )
+    sandbox_status_text = _html(
+        "ISOLATED_BOUND_PASS"
+        if latest_sandbox
+        and latest_sandbox.passed
+        and latest_sandbox.identity_bound
+        and latest_sandbox.isolation_verified
+        else "ISOLATED_BOUND_FAIL"
+        if latest_sandbox
+        and latest_sandbox.identity_bound
+        and latest_sandbox.isolation_verified
+        else "UNVERIFIED_ISOLATION"
+        if latest_sandbox
+        else "NOT_RUN"
+    )
+    sandbox_image_text = _html(
+        latest_sandbox.image_id if latest_sandbox and latest_sandbox.image_id else "NOT_AVAILABLE"
+    )
     audit_hash = _html(out.get("audit_sha256", "NOT_AVAILABLE") if out else "NOT_AVAILABLE")
 
     return f"""<!DOCTYPE html>
@@ -139,6 +189,14 @@ def export_full_html_dossier(posture: ProjectPosture) -> str:
   <div class="card" style="background: #fffbeb; border-color: #fef3c7;">
     <p><strong>Null Hypothesis:</strong> {h0_text}</p>
     <p><strong>Evaluation Status:</strong> {h0_status_text}</p>
+  </div>
+
+  <h2>Execution Boundaries</h2>
+  <div class="card">
+    <p><strong>Restricted preflight:</strong> {restricted_status_text}</p>
+    <p><strong>Secure sandbox:</strong> {sandbox_status_text}</p>
+    <p><strong>Sandbox image ID:</strong> <span class="mono">{sandbox_image_text}</span></p>
+    <p>These statuses describe workflow execution boundaries only; they do not establish scientific validity or deployed-system safety.</p>
   </div>
 
   <h2>Scientific Status</h2>

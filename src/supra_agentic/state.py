@@ -22,6 +22,7 @@ from .models import (
     CheckpointRecord,
     ProjectPosture,
     RestrictedExecutionResult,
+    SecureSandboxResult,
     StrategyCandidate,
     StructuredDecomposition,
     TaskmasterStage,
@@ -191,7 +192,7 @@ class ProjectStateManager:
     def record_restricted_execution(
         self, project_id: str, result: RestrictedExecutionResult
     ) -> ProjectPosture:
-        """Record trusted restricted execution without claiming process isolation."""
+        """Record trusted restricted preflight without claiming process isolation."""
         with self._lock:
             p = self._get_required_project(project_id)
             expected = (
@@ -210,25 +211,53 @@ class ProjectStateManager:
             )
             result.identity_bound = identity_matches
             p.restricted_execution_results.append(result)
-            if p.stage not in {TaskmasterStage.COMPLETED, TaskmasterStage.FAILED}:
-                if result.passed and identity_matches:
-                    p.stage = TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED
-                elif p.selected_candidate is not None:
-                    # The latest bound or unbound review replaces derived
-                    # execution state; a failed review cannot preserve PASS.
-                    p.stage = TaskmasterStage.STRATIFIED
+
+            latest_sandbox = (
+                p.secure_sandbox_results[-1] if p.secure_sandbox_results else None
+            )
+            sandbox_gate = bool(
+                latest_sandbox
+                and latest_sandbox.passed
+                and latest_sandbox.identity_bound
+                and latest_sandbox.isolation_verified
+            )
+            restricted_gate = bool(result.passed and identity_matches)
+
+            if p.stage is not TaskmasterStage.FAILED:
+                if not restricted_gate:
+                    p.stage = (
+                        TaskmasterStage.STRATIFIED
+                        if p.selected_candidate is not None
+                        else TaskmasterStage.STRUCTURED
+                        if p.decomposition is not None
+                        else TaskmasterStage.RECEIVED
+                    )
+                    if p.final_output is not None:
+                        output = dict(p.final_output)
+                        output["workflow_status"] = "BLOCKED"
+                        output["completion_status"] = "BLOCKED"
+                        output["derived_completion_state_revalidated"] = True
+                        p.final_output = output
+                elif p.stage is not TaskmasterStage.COMPLETED:
+                    p.stage = (
+                        TaskmasterStage.SECURE_SANDBOX_VERIFIED
+                        if sandbox_gate
+                        else TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED
+                    )
+
             if p.final_output is not None:
                 output = dict(p.final_output)
                 output["restricted_execution_identity_bound"] = result.identity_bound
                 output["restricted_execution_status"] = (
                     "BOUND_PASS"
-                    if result.passed and result.identity_bound
+                    if restricted_gate
                     else "BOUND_FAIL"
                     if result.identity_bound
                     else "UNBOUND"
                 )
                 output["derived_execution_state_revalidated"] = True
                 p.final_output = output
+
             p.updated_at = time.time()
             p.checkpoints.append(
                 CheckpointRecord(
@@ -245,26 +274,140 @@ class ProjectStateManager:
             self._persist_project(project_id)
             return p
 
-    def complete_project(self, project_id: str, final_output: dict[str, Any]) -> ProjectPosture:
-        """Complete only when verification and restricted-execution gates both pass."""
+    def record_secure_sandbox_execution(
+        self, project_id: str, result: SecureSandboxResult
+    ) -> ProjectPosture:
+        """Record an externally isolated sandbox receipt and derive its gate state."""
         with self._lock:
             p = self._get_required_project(project_id)
-            verification_status = str(p.verification.verdict) if p.verification else "NOT_EVALUATED"
+            expected = (
+                candidate_execution_identity(p.selected_candidate)
+                if p.selected_candidate is not None
+                else None
+            )
+            identity_matches = bool(
+                result.identity_bound
+                and expected is not None
+                and result.candidate_id == expected["candidate_id"]
+                and result.mechanism_version == expected["mechanism_version"]
+                and result.claim_id == expected["claim_id"]
+                and isinstance(result.protocol_version, str)
+                and result.protocol_version.startswith("sha256:")
+                and isinstance(result.image_id, str)
+                and result.image_id.startswith("sha256:")
+            )
+            result.identity_bound = identity_matches
+            sandbox_gate = bool(
+                result.passed and identity_matches and result.isolation_verified
+            )
+            p.secure_sandbox_results.append(result)
+
+            latest_restricted = (
+                p.restricted_execution_results[-1]
+                if p.restricted_execution_results
+                else None
+            )
+            restricted_gate = bool(
+                latest_restricted
+                and latest_restricted.passed
+                and latest_restricted.identity_bound
+            )
+
+            if p.stage is not TaskmasterStage.FAILED:
+                if sandbox_gate:
+                    if p.stage is not TaskmasterStage.COMPLETED:
+                        p.stage = TaskmasterStage.SECURE_SANDBOX_VERIFIED
+                else:
+                    p.stage = (
+                        TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED
+                        if restricted_gate
+                        else TaskmasterStage.STRATIFIED
+                        if p.selected_candidate is not None
+                        else TaskmasterStage.STRUCTURED
+                        if p.decomposition is not None
+                        else TaskmasterStage.RECEIVED
+                    )
+                    if p.final_output is not None:
+                        output = dict(p.final_output)
+                        output["workflow_status"] = "BLOCKED"
+                        output["completion_status"] = "BLOCKED"
+                        output["derived_completion_state_revalidated"] = True
+                        p.final_output = output
+
+            if p.final_output is not None:
+                output = dict(p.final_output)
+                output["secure_sandbox_identity_bound"] = result.identity_bound
+                output["secure_sandbox_isolation_verified"] = result.isolation_verified
+                output["secure_sandbox_status"] = (
+                    "ISOLATED_BOUND_PASS"
+                    if sandbox_gate
+                    else "ISOLATED_BOUND_FAIL"
+                    if result.identity_bound and result.isolation_verified
+                    else "UNVERIFIED_ISOLATION"
+                )
+                p.final_output = output
+
+            p.updated_at = time.time()
+            p.checkpoints.append(
+                CheckpointRecord(
+                    stage=p.stage,
+                    title="Secure Sandbox Execution",
+                    evidence_summary=(
+                        f"Backend: {result.backend}. Passed: {result.passed}. "
+                        f"Identity bound: {result.identity_bound}. "
+                        f"Isolation verified: {result.isolation_verified}. "
+                        f"Timed out: {result.timed_out}. Scientific validation: False."
+                    ),
+                    actor="agent:supra:secure-sandbox",
+                )
+            )
+            self._persist_project(project_id)
+            return p
+
+    def complete_project(self, project_id: str, final_output: dict[str, Any]) -> ProjectPosture:
+        """Complete only when verification, preflight, and isolated sandbox gates pass."""
+        with self._lock:
+            p = self._get_required_project(project_id)
+            verification_status = (
+                str(p.verification.verdict) if p.verification else "NOT_EVALUATED"
+            )
             latest_execution = (
-                p.restricted_execution_results[-1] if p.restricted_execution_results else None
+                p.restricted_execution_results[-1]
+                if p.restricted_execution_results
+                else None
+            )
+            latest_sandbox = (
+                p.secure_sandbox_results[-1] if p.secure_sandbox_results else None
             )
             execution_status = (
                 "BOUND_PASS"
-                if latest_execution and latest_execution.passed and latest_execution.identity_bound
+                if latest_execution
+                and latest_execution.passed
+                and latest_execution.identity_bound
                 else "BOUND_FAIL"
                 if latest_execution and latest_execution.identity_bound
                 else "UNBOUND"
                 if latest_execution
                 else "NOT_RUN"
             )
+            sandbox_status = (
+                "ISOLATED_BOUND_PASS"
+                if latest_sandbox
+                and latest_sandbox.passed
+                and latest_sandbox.identity_bound
+                and latest_sandbox.isolation_verified
+                else "ISOLATED_BOUND_FAIL"
+                if latest_sandbox
+                and latest_sandbox.identity_bound
+                and latest_sandbox.isolation_verified
+                else "UNVERIFIED_ISOLATION"
+                if latest_sandbox
+                else "NOT_RUN"
+            )
             verification_gate = verification_status in {"PASS", "CONDITIONAL_PASS"}
             execution_gate = execution_status == "BOUND_PASS"
-            if not verification_gate or not execution_gate:
+            sandbox_gate = sandbox_status == "ISOLATED_BOUND_PASS"
+            if not verification_gate or not execution_gate or not sandbox_gate:
                 p.updated_at = time.time()
                 p.checkpoints.append(
                     CheckpointRecord(
@@ -272,18 +415,29 @@ class ProjectStateManager:
                         title="Completion Gate Blocked",
                         evidence_summary=(
                             f"Completion blocked. Verification gate: {verification_status}. "
-                            f"Restricted execution gate: {execution_status}."
+                            f"Restricted preflight gate: {execution_status}. "
+                            f"Secure sandbox gate: {sandbox_status}."
                         ),
                         actor="system:completion_gate",
                     )
                 )
                 self._persist_project(project_id)
                 raise CompletionGateError(
-                    "Completion requires verification PASS/CONDITIONAL_PASS and "
-                    "current BOUND_PASS restricted execution."
+                    "Completion requires verification PASS/CONDITIONAL_PASS, "
+                    "current BOUND_PASS restricted preflight, and current "
+                    "ISOLATED_BOUND_PASS secure sandbox execution."
                 )
 
-            p.final_output = final_output
+            payload = dict(final_output)
+            payload["restricted_execution_status"] = execution_status
+            payload["secure_sandbox_status"] = sandbox_status
+            payload["secure_sandbox_identity_bound"] = bool(
+                latest_sandbox and latest_sandbox.identity_bound
+            )
+            payload["secure_sandbox_isolation_verified"] = bool(
+                latest_sandbox and latest_sandbox.isolation_verified
+            )
+            p.final_output = payload
             p.stage = TaskmasterStage.COMPLETED
             p.updated_at = time.time()
             p.checkpoints.append(
@@ -291,8 +445,9 @@ class ProjectStateManager:
                     stage=TaskmasterStage.COMPLETED,
                     title="Taskmaster Workflow Complete",
                     evidence_summary=(
-                        f"Workflow completed. Verification status: {verification_status}. "
-                        f"Restricted execution status: {execution_status}. "
+                        f"Workflow completed. Verification: {verification_status}. "
+                        f"Restricted preflight: {execution_status}. "
+                        f"Secure sandbox: {sandbox_status}. "
                         "Scientific validation: NOT_CLAIMED."
                     ),
                     actor="agent:supra:coordinator",

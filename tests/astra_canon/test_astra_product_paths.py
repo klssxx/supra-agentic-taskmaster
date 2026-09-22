@@ -59,6 +59,29 @@ def _prepare_completion_fixture(posture: ProjectPosture) -> None:
     assert result["passed"] is True
     assert result["identity_bound"] is True
 
+    identity = candidate_execution_identity(selected)
+    secure = SecureSandboxResult(
+        execution_semantics_version=SECURE_SANDBOX_SEMANTICS_VERSION,
+        candidate_id=identity["candidate_id"],
+        mechanism_version=identity["mechanism_version"],
+        claim_id=identity["claim_id"],
+        protocol_version="sha256:" + "2" * 64,
+        image="python:test",
+        image_id="sha256:" + "3" * 64,
+        passed=True,
+        observed_result="PASS",
+        exit_code=0,
+        output_log="SUPRA_SECURE_SANDBOX_OK",
+        duration_ms=2.0,
+        network_isolated=True,
+        read_only_root=True,
+        capabilities_dropped=True,
+        no_new_privileges=True,
+        non_root_user=True,
+        resource_limits_applied=True,
+    )
+    state_manager.record_secure_sandbox_execution(posture.project_id, secure)
+
 
 def test_astra_006_verdict_vocabulary_is_closed_and_score_semantics_are_scoped():
     with pytest.raises(ValidationError):
@@ -143,6 +166,8 @@ def test_astra_024_026_checkpoint_declares_incomplete_dependency_and_budget_clos
             state_manager.get_project(posture.project_id).candidates
         )
         assert accounting["restricted_execution_attempts"] == 1
+        assert accounting["secure_sandbox_attempts"] == 1
+        assert deps["secure_sandbox_image_id"] == "sha256:" + "3" * 64
         assert accounting["provider_generation_calls"] is None
         assert accounting["budget_complete"] is False
     finally:
