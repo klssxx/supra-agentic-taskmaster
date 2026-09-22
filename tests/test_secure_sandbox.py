@@ -140,3 +140,32 @@ def test_sandbox_source_contains_no_in_process_exec_fallback() -> None:
     assert "eval(" not in source
     assert "--network=none" in source
     assert "--pull=never" in source
+
+
+
+def test_secure_sandbox_runtime_race_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    image_id = "sha256:" + "a" * 64
+    monkeypatch.setattr(sandbox_module.shutil, "which", lambda _name: "/usr/bin/docker")
+    calls = 0
+
+    def _run(command: list[str], **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=image_id + "\n",
+                stderr="",
+            )
+        raise OSError("docker vanished")
+
+    monkeypatch.setattr(sandbox_module.subprocess, "run", _run)
+    with pytest.raises(SandboxUnavailableError, match="became unavailable"):
+        run_python_in_secure_docker(
+            "print('x')\n",
+            identity=IDENTITY,
+            config=_config(),
+        )
