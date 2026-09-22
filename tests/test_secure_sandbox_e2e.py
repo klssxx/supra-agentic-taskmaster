@@ -55,7 +55,7 @@ def test_real_docker_sandbox_can_satisfy_completion_gate(tmp_path) -> None:
 
     sandbox = secure_sandbox_executor(p.project_id)
     assert sandbox["status"] == "success"
-    assert sandbox["secure_sandbox_status"] == "ISOLATED_BOUND_PASS"
+    assert sandbox["secure_sandbox_status"] == "IDENTITY_BOUND_ISOLATION_PASS"
     receipt = sandbox["secure_sandbox_result"]
     assert receipt["passed"] is True
     assert receipt["identity_bound"] is True
@@ -67,6 +67,8 @@ def test_real_docker_sandbox_can_satisfy_completion_gate(tmp_path) -> None:
     assert receipt["no_new_privileges"] is True
     assert receipt["non_root_user"] is True
     assert receipt["resource_limits_applied"] is True
+    assert receipt["execution_scope"] == "IDENTITY_BOUNDARY_SMOKE_ONLY"
+    assert receipt["candidate_mechanism_executed"] is False
 
     final = record_checkpoint(
         p.project_id,
@@ -74,5 +76,7 @@ def test_real_docker_sandbox_can_satisfy_completion_gate(tmp_path) -> None:
         summary="CI-only workflow completion after real isolated execution.",
     )
     assert final["stage"] == TaskmasterStage.COMPLETED.value
-    assert final["final_deliverable"]["secure_sandbox_status"] == "ISOLATED_BOUND_PASS"
+    assert final["final_deliverable"]["secure_sandbox_status"] == "IDENTITY_BOUND_ISOLATION_PASS"
+    assert final["final_deliverable"]["secure_sandbox_execution_scope"] == "IDENTITY_BOUNDARY_SMOKE_ONLY"
+    assert final["final_deliverable"]["candidate_mechanism_executed_in_secure_sandbox"] is False
     assert final["final_deliverable"]["scientific_status"] == "NOT_VALIDATED"
