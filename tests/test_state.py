@@ -263,7 +263,6 @@ def test_completed_workflow_is_revoked_immediately_by_latest_restricted_failure(
         assert revised.final_output["derived_completion_state_revalidated"] is True
 
 
-
 @pytest.mark.parametrize("verdict", ["FAIL", "NOT_EVALUATED"])
 def test_completion_gate_rejects_failed_or_missing_verification(verdict: str) -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
