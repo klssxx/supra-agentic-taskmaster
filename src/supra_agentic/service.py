@@ -213,7 +213,8 @@ def create_and_run_project(req: CreateProjectRequest) -> dict[str, Any] | Respon
     Returns HTTP status for workflow execution. A 201 response means the
     workflow request completed; verification and scientific status are returned
     separately and must not be inferred from HTTP success.
-    - 201 Created + {"status": "success"} on workflow completion
+    - 201 Created + {"status": "success"} only when completion gates pass
+    - 201 Created + {"status": "blocked"} when verification/execution gates block completion
     - 500 Internal Server Error + {"status": "error"} on workflow failure
     """
     try:
@@ -252,9 +253,11 @@ def create_and_run_project(req: CreateProjectRequest) -> dict[str, Any] | Respon
             )
 
         final_output = posture.final_output or {}
+        workflow_completed = posture.stage.value == "COMPLETED"
         return {
-            "status": "success",
+            "status": "success" if workflow_completed else "blocked",
             "status_scope": "WORKFLOW_EXECUTION_ONLY",
+            "completion_status": "COMPLETED" if workflow_completed else "BLOCKED",
             "workflow_status": posture.stage.value,
             "verification_status": (
                 posture.verification.verdict if posture.verification else "NOT_EVALUATED"
