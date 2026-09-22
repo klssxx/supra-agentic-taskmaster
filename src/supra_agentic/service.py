@@ -107,6 +107,7 @@ if CORS_ORIGINS:
         allow_headers=["Authorization", "Content-Type", "X-API-Key"],
     )
 
+
 @app.middleware("http")
 async def enforce_api_auth(request: Request, call_next):
     """Require API-key authentication for non-loopback API clients."""
