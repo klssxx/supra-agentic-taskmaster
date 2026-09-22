@@ -4,7 +4,7 @@ implementation_spec: READY
 runtime_branch: feat/anti-goodhart-standard
 activation:
   STANDARD: DISABLED
-  reason: G3_DEPLOYMENT_ISOLATION_AND_G4_TWO_CONSECUTIVE_DECISIONS_NOT_VERIFIED
+  reason: G3_DEPLOYMENT_ISOLATION_NOT_VERIFIED
 gates:
   G1:
     status: CODE_SENTINELS_IMPLEMENTED
@@ -20,10 +20,9 @@ gates:
       - no shared locks connection pools provider quotas or scheduling queues
       - latency saturation storage failure and timeout perturbations leave D timing semantics unchanged
   G4:
-    status: PARTIAL_CODE_SENTINELS_IMPLEMENTED
+    status: CODE_SENTINELS_IMPLEMENTED
     claim_scope: observer_persistence_restart_and_execution_state_contamination
-    required:
-      - two consecutive decisional runs remain semantically unchanged after out-of-band observation
+    claim_scope_note: includes_two_consecutive_decisions_after_persisted_observer_state
 sensitivity_controls:
   status: CI_SENTINELS_IMPLEMENTED
   scope:
