@@ -589,7 +589,7 @@ def restricted_python_executor(
 
 
 # ---------------------------------------------------------------------------
-# Tool 5: secure external sandbox (completion isolation gate)
+# Tool 5: secure external sandbox (identity-bound isolation gate)
 # ---------------------------------------------------------------------------
 def _canonical_secure_sandbox_code(identity: dict[str, str]) -> str:
     """Return an identity-bound isolation smoke, not candidate mechanism execution."""
