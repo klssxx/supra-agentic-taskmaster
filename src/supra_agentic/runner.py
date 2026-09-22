@@ -10,7 +10,7 @@ from typing import Any
 from .agent import TaskmasterAgent, create_taskmaster_agent
 from .models import ProjectPosture
 from .providers import AgentProvider, ProviderError
-from .state import state_manager
+from .state import CompletionGateError, state_manager
 from .tools import (
     decompose_objective,
     record_checkpoint,
@@ -191,6 +191,11 @@ class TaskmasterRunner:
             )
             return final_posture
 
+        except CompletionGateError as exc:
+            logger.warning("[%s] Completion gate blocked: %s", pid, exc)
+            blocked_posture = state_manager.get_project(pid)
+            assert blocked_posture is not None
+            return blocked_posture
         except Exception as exc:
             error_type = type(exc).__name__
             logger.error("[%s] Taskmaster execution failed (%s)", pid, error_type)
