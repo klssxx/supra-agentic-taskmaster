@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 import pytest
+
 from supra_agentic.anti_goodhart.detectors import (
     DetectorSpec,
     execution_record_consistency,
