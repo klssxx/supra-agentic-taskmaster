@@ -24,6 +24,17 @@ from .runner import TaskmasterRunner, taskmaster_runner
 from .state import state_manager, validate_project_id
 
 logger = logging.getLogger("supra_agentic.service")
+
+
+def _secure_sandbox_status(posture: ProjectPosture) -> str:
+    latest = posture.secure_sandbox_results[-1] if posture.secure_sandbox_results else None
+    if latest and latest.passed and latest.identity_bound and latest.isolation_verified:
+        return "ISOLATED_BOUND_PASS"
+    if latest and latest.identity_bound and latest.isolation_verified:
+        return "ISOLATED_BOUND_FAIL"
+    if latest:
+        return "UNVERIFIED_ISOLATION"
+    return "NOT_RUN"
 MAX_MCP_BODY_SIZE = 8 * 1024 * 1024
 
 
@@ -262,6 +273,7 @@ def create_and_run_project(req: CreateProjectRequest) -> dict[str, Any] | Respon
             "verification_status": (
                 posture.verification.verdict if posture.verification else "NOT_EVALUATED"
             ),
+            "secure_sandbox_status": _secure_sandbox_status(posture),
             "verification_scope": (
                 posture.verification.verification_scope
                 if posture.verification
@@ -367,6 +379,7 @@ def example_quick_run() -> dict[str, Any]:
         "verification_status": (
             posture.verification.verdict if posture.verification else "NOT_EVALUATED"
         ),
+        "secure_sandbox_status": _secure_sandbox_status(posture),
         "scientific_status": (
             (posture.final_output or {}).get("scientific_status", "NOT_VALIDATED")
         ),
