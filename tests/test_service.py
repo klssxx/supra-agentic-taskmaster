@@ -5,10 +5,10 @@ import tempfile
 import time
 
 import pytest
+import supra_agentic.service as service_module
 from fastapi.testclient import TestClient
 from supra_agentic.dossier import export_full_html_dossier
 from supra_agentic.models import ProjectPosture, TaskmasterStage
-import supra_agentic.service as service_module
 from supra_agentic.service import _parse_cors_origins, app
 from supra_agentic.state import state_manager
 
@@ -148,7 +148,6 @@ def test_create_project_records_provider_without_calling_it():
         assert data["verification_status"] == "FAIL"
         assert data["scientific_status"] == "NOT_VALIDATED"
         assert data["posture"]["final_output"] is None
-
 
 
 def test_cors_rejects_wildcard_origin() -> None:
