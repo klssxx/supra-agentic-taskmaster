@@ -29,9 +29,9 @@ logger = logging.getLogger("supra_agentic.service")
 def _secure_sandbox_status(posture: ProjectPosture) -> str:
     latest = posture.secure_sandbox_results[-1] if posture.secure_sandbox_results else None
     if latest and latest.passed and latest.identity_bound and latest.isolation_verified:
-        return "ISOLATED_BOUND_PASS"
+        return "IDENTITY_BOUND_ISOLATION_PASS"
     if latest and latest.identity_bound and latest.isolation_verified:
-        return "ISOLATED_BOUND_FAIL"
+        return "IDENTITY_BOUND_ISOLATION_FAIL"
     if latest:
         return "UNVERIFIED_ISOLATION"
     return "NOT_RUN"
