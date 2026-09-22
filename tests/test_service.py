@@ -43,8 +43,8 @@ def test_quick_run_example():
         assert data["example"] is True
         assert data["completion_status"] in {"COMPLETED", "BLOCKED"}
         assert data["secure_sandbox_status"] in {
-            "ISOLATED_BOUND_PASS",
-            "ISOLATED_BOUND_FAIL",
+            "IDENTITY_BOUND_ISOLATION_PASS",
+            "IDENTITY_BOUND_ISOLATION_FAIL",
             "UNVERIFIED_ISOLATION",
             "NOT_RUN",
         }
@@ -55,7 +55,7 @@ def test_quick_run_example():
         else:
             assert data["status"] == "success"
             assert data["stage"] == "COMPLETED"
-            assert data["secure_sandbox_status"] == "ISOLATED_BOUND_PASS"
+            assert data["secure_sandbox_status"] == "IDENTITY_BOUND_ISOLATION_PASS"
             assert "audit_sha256" in data["deliverable"]
             assert "null_hypothesis_h0" in data["deliverable"]
 
