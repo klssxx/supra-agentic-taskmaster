@@ -48,6 +48,11 @@ def test_quick_run_example():
             "UNVERIFIED_ISOLATION",
             "NOT_RUN",
         }
+        assert data["secure_sandbox_execution_scope"] in {
+            "IDENTITY_BOUNDARY_SMOKE_ONLY",
+            "NOT_RUN",
+        }
+        assert data["candidate_mechanism_executed_in_secure_sandbox"] is False
         if data["completion_status"] == "BLOCKED":
             assert data["status"] == "blocked"
             assert data["stage"] != "COMPLETED"
@@ -97,6 +102,11 @@ def test_webmcp_jsonrpc_protocol():
         assert call_res.status_code == 200
         payload = json.loads(call_res.json()["result"]["content"][0]["text"])
         assert payload["completion_status"] in {"COMPLETED", "BLOCKED"}
+        assert payload["secure_sandbox_execution_scope"] in {
+            "IDENTITY_BOUNDARY_SMOKE_ONLY",
+            "NOT_RUN",
+        }
+        assert payload["candidate_mechanism_executed_in_secure_sandbox"] is False
         if payload["completion_status"] == "BLOCKED":
             assert payload["status"] == "blocked"
             assert payload["workflow_status"] != "COMPLETED"
