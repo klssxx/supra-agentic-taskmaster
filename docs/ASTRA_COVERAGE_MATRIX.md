@@ -22,7 +22,7 @@ before those checks are considered executed for this HEAD.
 
 | ID | Current enforcement | Evidence / remaining limitation |
 |---|---|---|
-| ASTRA-001 | ENFORCED | UI, API, state and final payload separate coverage verdict, restricted execution, completion and scientific status. COMPLETED requires PASS/CONDITIONAL_PASS coverage plus current BOUND_PASS restricted execution; missing/FAIL/NOT_EVALUATED cannot complete. |
+| ASTRA-001 | ENFORCED | UI, API, state and final payload separate coverage verdict, restricted execution, sandbox-isolation smoke, completion and scientific status. COMPLETED requires PASS/CONDITIONAL_PASS coverage, current BOUND_PASS restricted preflight, and a current identity-bound isolation-smoke PASS. The sandbox smoke does not execute the candidate mechanism. Missing/FAIL/NOT_EVALUATED cannot complete. |
 | ASTRA-003 | PARTIAL | Final payload records telemetry provenance, transform and scope; universal claim-level provenance remains outside SUPRA. |
 | ASTRA-006 | ENFORCED | Verification verdict vocabulary is closed; confidence is bounded and labelled `HEURISTIC_COVERAGE` / fraction of declared invariants, not probability of real success. |
 | ASTRA-017 | ENFORCED | Restricted stage advances only for a passing execution whose identity is derived from the persisted selected candidate and executed protocol under the current execution-semantics version. Caller strings cannot create binding. Scientific validation is structurally rejected. |
