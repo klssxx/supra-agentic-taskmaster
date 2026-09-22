@@ -33,12 +33,12 @@ def generate_svg_architecture(posture: ProjectPosture) -> str:
         posture.secure_sandbox_results[-1] if posture.secure_sandbox_results else None
     )
     sandbox_status = _html(
-        "ISOLATED_BOUND_PASS"
+        "IDENTITY_BOUND_ISOLATION_PASS"
         if latest_sandbox
         and latest_sandbox.passed
         and latest_sandbox.identity_bound
         and latest_sandbox.isolation_verified
-        else "ISOLATED_BOUND_FAIL"
+        else "IDENTITY_BOUND_ISOLATION_FAIL"
         if latest_sandbox
         and latest_sandbox.identity_bound
         and latest_sandbox.isolation_verified
@@ -128,12 +128,12 @@ def export_full_html_dossier(posture: ProjectPosture) -> str:
         else "NOT_RUN"
     )
     sandbox_status_text = _html(
-        "ISOLATED_BOUND_PASS"
+        "IDENTITY_BOUND_ISOLATION_PASS"
         if latest_sandbox
         and latest_sandbox.passed
         and latest_sandbox.identity_bound
         and latest_sandbox.isolation_verified
-        else "ISOLATED_BOUND_FAIL"
+        else "IDENTITY_BOUND_ISOLATION_FAIL"
         if latest_sandbox
         and latest_sandbox.identity_bound
         and latest_sandbox.isolation_verified
