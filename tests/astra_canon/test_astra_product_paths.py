@@ -15,7 +15,6 @@ from supra_agentic.tools import (
     record_checkpoint,
     restricted_python_executor,
     synthesize_strategy,
-    verify_solution,
 )
 
 
