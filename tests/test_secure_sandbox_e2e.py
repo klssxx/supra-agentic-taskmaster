@@ -77,6 +77,9 @@ def test_real_docker_sandbox_can_satisfy_completion_gate(tmp_path) -> None:
     )
     assert final["stage"] == TaskmasterStage.COMPLETED.value
     assert final["final_deliverable"]["secure_sandbox_status"] == "IDENTITY_BOUND_ISOLATION_PASS"
-    assert final["final_deliverable"]["secure_sandbox_execution_scope"] == "IDENTITY_BOUNDARY_SMOKE_ONLY"
+    assert (
+        final["final_deliverable"]["secure_sandbox_execution_scope"]
+        == "IDENTITY_BOUNDARY_SMOKE_ONLY"
+    )
     assert final["final_deliverable"]["candidate_mechanism_executed_in_secure_sandbox"] is False
     assert final["final_deliverable"]["scientific_status"] == "NOT_VALIDATED"
