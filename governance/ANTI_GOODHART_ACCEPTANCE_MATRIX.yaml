@@ -75,7 +75,8 @@ rows:
     failure_effect: STANDARD_REMAINS_DISABLED
   - gate: G4
     perturbation: two_consecutive_decisions
-    status: NOT_YET_IMPLEMENTED
+    status: CI_SENTINEL_IMPLEMENTED
+    sentinel: tests/astra_canon/test_g3_harness_smoke.py::test_g4_two_consecutive_decisions_ignore_persisted_observer_state
     failure_effect: STANDARD_REMAINS_DISABLED
 scientific_claims:
   goodhart_detected: NOT_CLAIMED
