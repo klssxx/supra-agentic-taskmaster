@@ -68,12 +68,17 @@ class DockerSandboxConfig:
             raise ValueError("sandbox pids_limit must be between 8 and 512")
 
 
-def sandbox_protocol_version(code: str, config: DockerSandboxConfig) -> str:
-    """Bind the receipt to code plus the isolation configuration."""
+def sandbox_protocol_version(
+    code: str,
+    config: DockerSandboxConfig,
+    image_id: str,
+) -> str:
+    """Bind the receipt to code, immutable image identity, and isolation config."""
     payload = "\n".join(
         [
             "supra-secure-docker-v1",
             config.image,
+            image_id,
             str(config.timeout_seconds),
             str(config.memory_mb),
             str(config.cpus),
@@ -94,10 +99,11 @@ def _docker_binary() -> str:
 def _ensure_image_present(
     docker: str,
     config: DockerSandboxConfig,
-) -> None:
+) -> str:
+    """Resolve a pre-pulled tag to an immutable image ID."""
     try:
         result = subprocess.run(
-            [docker, "image", "inspect", config.image],
+            [docker, "image", "inspect", "--format={{.Id}}", config.image],
             check=False,
             capture_output=True,
             text=True,
@@ -109,6 +115,10 @@ def _ensure_image_present(
         raise SandboxUnavailableError(
             "Configured sandbox image is not present locally; implicit pulls are forbidden"
         )
+    image_id = (result.stdout or "").strip()
+    if not image_id.startswith("sha256:"):
+        raise SandboxUnavailableError("Docker image did not resolve to an immutable sha256 ID")
+    return image_id
 
 
 def _bounded(text: str) -> str:
@@ -134,13 +144,14 @@ def run_python_in_secure_docker(
     cfg = config or DockerSandboxConfig.from_env()
     cfg.validate()
     docker = _docker_binary()
-    _ensure_image_present(docker, cfg)
-    protocol_version = sandbox_protocol_version(code, cfg)
+    image_id = _ensure_image_present(docker, cfg)
+    protocol_version = sandbox_protocol_version(code, cfg, image_id)
 
     started = time.monotonic()
     with tempfile.TemporaryDirectory(prefix="supra-sandbox-") as tmpdir:
         script = Path(tmpdir) / "runner.py"
         script.write_text(code, encoding="utf-8", newline="\n")
+        script.chmod(0o444)
 
         command = [
             docker,
@@ -154,11 +165,13 @@ def run_python_in_secure_docker(
             "--user=65534:65534",
             f"--pids-limit={cfg.pids_limit}",
             f"--memory={cfg.memory_mb}m",
+            f"--memory-swap={cfg.memory_mb}m",
             f"--cpus={cfg.cpus}",
+            "--ipc=none",
             "--tmpfs=/tmp:rw,noexec,nosuid,size=16m",
             "--mount",
             f"type=bind,src={script},dst=/opt/supra/runner.py,readonly",
-            cfg.image,
+            image_id,
             "python",
             "-I",
             "/opt/supra/runner.py",
@@ -170,7 +183,6 @@ def run_python_in_secure_docker(
                 capture_output=True,
                 text=True,
                 timeout=cfg.timeout_seconds,
-                env={"PATH": os.environ.get("PATH", "")},
             )
             duration_ms = (time.monotonic() - started) * 1000
             passed = result.returncode == 0
@@ -184,6 +196,7 @@ def run_python_in_secure_docker(
                 claim_id=identity["claim_id"],
                 protocol_version=protocol_version,
                 image=cfg.image,
+                image_id=image_id,
                 passed=passed,
                 observed_result="PASS" if passed else "FAIL",
                 exit_code=result.returncode,
@@ -212,6 +225,7 @@ def run_python_in_secure_docker(
                 claim_id=identity["claim_id"],
                 protocol_version=protocol_version,
                 image=cfg.image,
+                image_id=image_id,
                 passed=False,
                 observed_result="FAIL",
                 exit_code=None,
