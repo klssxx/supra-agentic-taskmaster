@@ -441,6 +441,22 @@ def test_store_repairs_valid_tail_separator_before_append(tmp_path: Path) -> Non
     ]
 
 
+def test_store_rejects_duplicate_historical_diagnostic_ids(tmp_path: Path) -> None:
+    store = ObserverStore(tmp_path / "observer")
+    store.root.mkdir(parents=True, exist_ok=True)
+    diagnostic = _store_diagnostic("duplicate")
+    encoded = json.dumps(diagnostic.to_record(), sort_keys=True)
+    store.diagnostics_path.write_text(encoded + "\n" + encoded + "\n", encoding="utf-8")
+    before = store.diagnostics_path.read_bytes()
+
+    with pytest.raises(ObserverStoreCorruptionError, match="duplicate diagnostic_id"):
+        store.read_diagnostics()
+    with pytest.raises(ObserverStoreCorruptionError, match="duplicate diagnostic_id"):
+        store.append_diagnostic(diagnostic)
+
+    assert store.diagnostics_path.read_bytes() == before
+
+
 @pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf])
 def test_public_trace_rejects_nonfinite_numbers(value: float) -> None:
     posture = _posture()
