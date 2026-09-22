@@ -254,12 +254,12 @@ def handle_mcp_jsonrpc_request(payload: Mapping[str, Any]) -> dict[str, Any]:
                         else "NOT_EVALUATED"
                     ),
                     "secure_sandbox_status": (
-                        "ISOLATED_BOUND_PASS"
+                        "IDENTITY_BOUND_ISOLATION_PASS"
                         if posture.secure_sandbox_results
                         and posture.secure_sandbox_results[-1].passed
                         and posture.secure_sandbox_results[-1].identity_bound
                         and posture.secure_sandbox_results[-1].isolation_verified
-                        else "ISOLATED_BOUND_FAIL"
+                        else "IDENTITY_BOUND_ISOLATION_FAIL"
                         if posture.secure_sandbox_results
                         and posture.secure_sandbox_results[-1].identity_bound
                         and posture.secure_sandbox_results[-1].isolation_verified
