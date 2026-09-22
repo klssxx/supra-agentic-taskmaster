@@ -152,7 +152,16 @@ class ObserverStore:
         return diagnostic
 
     def read_diagnostics(self) -> list[dict[str, Any]]:
-        return self._read_records(self.diagnostics_path, validate_diagnostics=True)
+        records = self._read_records(self.diagnostics_path, validate_diagnostics=True)
+        seen: set[str] = set()
+        for item in records:
+            diagnostic_id = str(item["diagnostic_id"])
+            if diagnostic_id in seen:
+                raise ObserverStoreCorruptionError(
+                    f"{self.diagnostics_path.name} contains duplicate diagnostic_id"
+                )
+            seen.add(diagnostic_id)
+        return records
 
     def read_failures(self) -> list[dict[str, Any]]:
         return self._read_records(self.failures_path)
