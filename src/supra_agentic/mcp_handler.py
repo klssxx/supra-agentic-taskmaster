@@ -2,7 +2,7 @@
 
 Exposes standard MCP tools, resources, and prompts over HTTP JSON-RPC 2.0:
   - Tools: supra_decompose, supra_synthesize, supra_verify,
-    supra_restricted_execution, supra_quick_run
+    supra_restricted_execution, supra_secure_sandbox, supra_quick_run
   - Resources: supra://schema/invariants, supra://state/active-projects
   - Prompts: prompt_taskmaster_challenge, prompt_falsification_audit
 """
@@ -20,6 +20,7 @@ from .tools import (
     MAX_FUZZ_ITERATIONS,
     decompose_objective,
     restricted_python_executor,
+    secure_sandbox_executor,
     synthesize_strategy,
     verify_solution,
 )
@@ -29,7 +30,10 @@ logger = logging.getLogger("supra_agentic.mcp_handler")
 MCP_TOOLS_MANIFEST = [
     {
         "name": "supra_quick_run",
-        "description": "Execute the gated Taskmaster workflow; completion is reported only when verification and restricted-execution gates pass.",
+        "description": (
+            "Execute the gated Taskmaster workflow; completion is reported only "
+            "when verification, restricted preflight, and secure sandbox gates pass."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -96,6 +100,21 @@ MCP_TOOLS_MANIFEST = [
                     "minimum": 1,
                     "maximum": MAX_FUZZ_ITERATIONS,
                 },
+            },
+            "required": ["project_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "supra_secure_sandbox",
+        "description": (
+            "Run SUPRA's fixed completion protocol in the configured fail-closed "
+            "Docker sandbox. No remote source code is accepted."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "string"},
             },
             "required": ["project_id"],
             "additionalProperties": False,
@@ -234,6 +253,20 @@ def handle_mcp_jsonrpc_request(payload: Mapping[str, Any]) -> dict[str, Any]:
                         if posture.verification is not None
                         else "NOT_EVALUATED"
                     ),
+                    "secure_sandbox_status": (
+                        "ISOLATED_BOUND_PASS"
+                        if posture.secure_sandbox_results
+                        and posture.secure_sandbox_results[-1].passed
+                        and posture.secure_sandbox_results[-1].identity_bound
+                        and posture.secure_sandbox_results[-1].isolation_verified
+                        else "ISOLATED_BOUND_FAIL"
+                        if posture.secure_sandbox_results
+                        and posture.secure_sandbox_results[-1].identity_bound
+                        and posture.secure_sandbox_results[-1].isolation_verified
+                        else "UNVERIFIED_ISOLATION"
+                        if posture.secure_sandbox_results
+                        else "NOT_RUN"
+                    ),
                     "posture": posture.model_dump(),
                 }
             elif tool_name == "supra_decompose":
@@ -278,6 +311,19 @@ def handle_mcp_jsonrpc_request(payload: Mapping[str, Any]) -> dict[str, Any]:
                         },
                     }
                 res = restricted_python_executor(args["project_id"], fuzz_iterations=iterations)
+            elif tool_name == "supra_secure_sandbox":
+                allowed = {"project_id"}
+                unexpected = sorted(set(args) - allowed)
+                if unexpected:
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": req_id,
+                        "error": {
+                            "code": -32602,
+                            "message": f"Invalid params: unsupported fields {unexpected}",
+                        },
+                    }
+                res = secure_sandbox_executor(args["project_id"])
             else:
                 return {
                     "jsonrpc": "2.0",
