@@ -144,7 +144,7 @@ def test_project_lifecycle_transitions():
         assert p5.stage == TaskmasterStage.COMPLETED
         assert p5.final_output is not None
         assert p5.final_output["deliverable"] == final_doc["deliverable"]
-        assert p5.final_output["secure_sandbox_status"] == "ISOLATED_BOUND_PASS"
+        assert p5.final_output["secure_sandbox_status"] == "IDENTITY_BOUND_ISOLATION_PASS"
         assert len(p5.checkpoints) == 7
 
         # Persistence check: load in fresh instance
