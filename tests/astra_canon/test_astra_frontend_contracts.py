@@ -56,3 +56,15 @@ def test_astra_033_integrity_hash_is_not_described_as_truth():
     readme = _read("README.md")
     assert "SHA256_OF_SERIALIZED_PAYLOAD_NOT_TRUTH" in tools
     assert "it is not evidence that the payload is true" in readme
+
+
+
+def test_frontend_escapes_dynamic_html_and_project_ids() -> None:
+    app = _read("src/supra_agentic/web/app.js")
+    assert "function escapeHtml(value)" in app
+    assert "escapeHtml(posture.objective)" in app
+    assert "escapeHtml(c.hypothesis)" in app
+    assert "escapeHtml(chk.evidence_summary)" in app
+    assert "encodeURIComponent(currentProjectId)" in app
+    assert "encodeURIComponent(id)" in app
+    assert 'onclick="loadProjectById' not in app
