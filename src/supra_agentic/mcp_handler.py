@@ -29,7 +29,7 @@ logger = logging.getLogger("supra_agentic.mcp_handler")
 MCP_TOOLS_MANIFEST = [
     {
         "name": "supra_quick_run",
-        "description": "Execute the full 5-stage autonomous Taskmaster Golden Path for an objective.",
+        "description": "Execute the gated Taskmaster workflow; completion is reported only when verification and restricted-execution gates pass.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -223,7 +223,19 @@ def handle_mcp_jsonrpc_request(payload: Mapping[str, Any]) -> dict[str, Any]:
                     objective=args["objective"],
                     domain=args.get("domain", "general"),
                 )
-                res = posture.model_dump()
+                res = {
+                    "status": "success" if posture.stage.value == "COMPLETED" else "blocked",
+                    "completion_status": (
+                        "COMPLETED" if posture.stage.value == "COMPLETED" else "BLOCKED"
+                    ),
+                    "workflow_status": posture.stage.value,
+                    "verification_status": (
+                        posture.verification.verdict
+                        if posture.verification is not None
+                        else "NOT_EVALUATED"
+                    ),
+                    "posture": posture.model_dump(),
+                }
             elif tool_name == "supra_decompose":
                 res = decompose_objective(
                     args["project_id"], args["objective"], args.get("domain", "general")
