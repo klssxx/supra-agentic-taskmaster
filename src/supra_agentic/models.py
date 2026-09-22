@@ -170,11 +170,12 @@ class RestrictedExecutionResult(BaseModel):
 
 
 class SecureSandboxResult(BaseModel):
-    """Receipt from an externally isolated container execution.
+    """Receipt from an externally isolated identity-bound protocol smoke.
 
-    The receipt establishes configured isolation controls and execution outcome.
-    It does not claim scientific validation or perfect security against kernel/
-    runtime vulnerabilities.
+    The receipt establishes configured container-isolation controls and that the
+    identity-bound smoke protocol executed. It does not execute the selected
+    candidate mechanism, action plan, or hypothesis, and it does not claim
+    scientific validation or perfect security against kernel/runtime flaws.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -188,6 +189,10 @@ class SecureSandboxResult(BaseModel):
     image: str
     image_id: str | None = None
     action_type: Literal["SECURE_CONTAINER_PYTHON"] = "SECURE_CONTAINER_PYTHON"
+    execution_scope: Literal["IDENTITY_BOUNDARY_SMOKE_ONLY"] = (
+        "IDENTITY_BOUNDARY_SMOKE_ONLY"
+    )
+    candidate_mechanism_executed: Literal[False] = False
     passed: bool
     observed_result: Literal["PASS", "FAIL", "UNKNOWN"]
     exit_code: int | None = None
@@ -344,28 +349,28 @@ class ProjectPosture(BaseModel):
             else None
         )
 
-        for result in self.restricted_execution_results:
-            result.identity_bound = bool(
-                result.identity_bound
+        for restricted_result in self.restricted_execution_results:
+            restricted_result.identity_bound = bool(
+                restricted_result.identity_bound
                 and expected is not None
-                and result.candidate_id == expected["candidate_id"]
-                and result.mechanism_version == expected["mechanism_version"]
-                and result.claim_id == expected["claim_id"]
-                and isinstance(result.protocol_version, str)
-                and result.protocol_version.startswith("sha256:")
+                and restricted_result.candidate_id == expected["candidate_id"]
+                and restricted_result.mechanism_version == expected["mechanism_version"]
+                and restricted_result.claim_id == expected["claim_id"]
+                and isinstance(restricted_result.protocol_version, str)
+                and restricted_result.protocol_version.startswith("sha256:")
             )
 
-        for result in self.secure_sandbox_results:
-            result.identity_bound = bool(
-                result.identity_bound
+        for sandbox_result in self.secure_sandbox_results:
+            sandbox_result.identity_bound = bool(
+                sandbox_result.identity_bound
                 and expected is not None
-                and result.candidate_id == expected["candidate_id"]
-                and result.mechanism_version == expected["mechanism_version"]
-                and result.claim_id == expected["claim_id"]
-                and isinstance(result.protocol_version, str)
-                and result.protocol_version.startswith("sha256:")
-                and isinstance(result.image_id, str)
-                and result.image_id.startswith("sha256:")
+                and sandbox_result.candidate_id == expected["candidate_id"]
+                and sandbox_result.mechanism_version == expected["mechanism_version"]
+                and sandbox_result.claim_id == expected["claim_id"]
+                and isinstance(sandbox_result.protocol_version, str)
+                and sandbox_result.protocol_version.startswith("sha256:")
+                and isinstance(sandbox_result.image_id, str)
+                and sandbox_result.image_id.startswith("sha256:")
             )
 
         latest_execution = (
@@ -412,10 +417,16 @@ class ProjectPosture(BaseModel):
             output["secure_sandbox_isolation_verified"] = bool(
                 latest_sandbox and latest_sandbox.isolation_verified
             )
+            output["secure_sandbox_execution_scope"] = (
+                latest_sandbox.execution_scope if latest_sandbox else "NOT_RUN"
+            )
+            output["candidate_mechanism_executed_in_secure_sandbox"] = bool(
+                latest_sandbox and latest_sandbox.candidate_mechanism_executed
+            )
             output["secure_sandbox_status"] = (
-                "ISOLATED_BOUND_PASS"
+                "IDENTITY_BOUND_ISOLATION_PASS"
                 if sandbox_gate
-                else "ISOLATED_BOUND_FAIL"
+                else "IDENTITY_BOUND_ISOLATION_FAIL"
                 if latest_sandbox
                 and latest_sandbox.identity_bound
                 and latest_sandbox.isolation_verified
@@ -468,7 +479,7 @@ class ProjectPosture(BaseModel):
                     title="Persisted secure sandbox accreditation invalidated",
                     evidence_summary=(
                         "Secure-sandbox stage was downgraded on load because "
-                        "no isolated bound pass matches the selected candidate."
+                        "no identity-bound isolation smoke pass matches the selected candidate."
                     ),
                     actor="system:migration_guard",
                 )
