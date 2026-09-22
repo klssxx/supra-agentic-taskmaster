@@ -351,7 +351,7 @@ class ProjectStateManager:
             p.checkpoints.append(
                 CheckpointRecord(
                     stage=p.stage,
-                    title="Secure Sandbox Execution",
+                    title="Secure Sandbox Isolation Smoke",
                     evidence_summary=(
                         f"Backend: {result.backend}. Passed: {result.passed}. "
                         f"Identity bound: {result.identity_bound}. "
@@ -427,7 +427,7 @@ class ProjectStateManager:
                 raise CompletionGateError(
                     "Completion requires verification PASS/CONDITIONAL_PASS, "
                     "current BOUND_PASS restricted preflight, and current "
-                    "IDENTITY_BOUND_ISOLATION_PASS secure sandbox execution."
+                    "IDENTITY_BOUND_ISOLATION_PASS sandbox isolation smoke."
                 )
 
             payload = dict(final_output)
