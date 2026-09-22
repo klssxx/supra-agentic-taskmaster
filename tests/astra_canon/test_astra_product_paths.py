@@ -5,8 +5,9 @@ from __future__ import annotations
 import tempfile
 
 import pytest
-import supra_agentic.runner as runner_module
 from pydantic import ValidationError
+
+import supra_agentic.runner as runner_module
 from supra_agentic.models import (
     SECURE_SANDBOX_SEMANTICS_VERSION,
     ProjectPosture,
