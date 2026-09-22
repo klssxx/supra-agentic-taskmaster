@@ -21,7 +21,6 @@ def generate_svg_architecture(posture: ProjectPosture) -> str:
         posture.restricted_execution_results[-1] if posture.restricted_execution_results else None
     )
     restricted_status = _html(
-        (
         "BOUND_PASS"
         if latest_execution and latest_execution.passed and latest_execution.identity_bound
         else "BOUND_FAIL"
@@ -29,7 +28,6 @@ def generate_svg_architecture(posture: ProjectPosture) -> str:
         else "UNBOUND"
         if latest_execution
         else "NOT_RUN"
-        )
     )
 
     return f"""<svg width="720" height="200" viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg">
