@@ -240,9 +240,40 @@ jobs:
           docker rm supra-test
           exit 1
 
+  sandbox-e2e:
+    name: secure sandbox E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPRA_RUN_DOCKER_E2E: "1"
+      SUPRA_SANDBOX_IMAGE: "python:3.12-alpine"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with:
+          version: '0.11.28'
+          enable-cache: true
+          prune-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install locked dependencies
+        run: uv sync --all-extras --locked
+      - name: Pre-pull sandbox image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull "${SUPRA_SANDBOX_IMAGE}"
+          docker image inspect --format='{{.Id}}' "${SUPRA_SANDBOX_IMAGE}"
+      - name: Execute real isolated completion smoke
+        run: uv run --locked pytest -q tests/test_secure_sandbox_e2e.py
+
   ci-result:
     name: ci-result
-    needs: [astra-canon, quality, lint-types, dependency-audit, secret-scan, repository-scan, package, docker]
+    needs: [astra-canon, quality, lint-types, dependency-audit, secret-scan, repository-scan, package, docker, sandbox-e2e]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     env:
@@ -254,11 +285,12 @@ jobs:
       REPOSITORY_SCAN_RESULT: ${{ needs.repository-scan.result }}
       PACKAGE_RESULT: ${{ needs.package.result }}
       DOCKER_RESULT: ${{ needs.docker.result }}
+      SANDBOX_E2E_RESULT: ${{ needs.sandbox-e2e.result }}
     steps:
       - name: Enforce every required check
         shell: bash
         run: |
-          for check in ASTRA_CANON_RESULT QUALITY_RESULT LINT_TYPES_RESULT DEPENDENCY_AUDIT_RESULT SECRET_SCAN_RESULT REPOSITORY_SCAN_RESULT PACKAGE_RESULT DOCKER_RESULT; do
+          for check in ASTRA_CANON_RESULT QUALITY_RESULT LINT_TYPES_RESULT DEPENDENCY_AUDIT_RESULT SECRET_SCAN_RESULT REPOSITORY_SCAN_RESULT PACKAGE_RESULT DOCKER_RESULT SANDBOX_E2E_RESULT; do
             value="${!check}"
             if [ "$value" != "success" ]; then
               echo "$check did not pass: $value" >&2
