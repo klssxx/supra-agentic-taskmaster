@@ -6,20 +6,23 @@ restricted checks, and issuing auditable technical dossiers.
 
 ## What it does
 
-SUPRA combines a deterministic five-stage workflow with an optional model
+SUPRA combines a deterministic gated workflow with an optional model
 boundary. The deterministic stages remain authoritative for state transitions,
-safety gates, scoped coverage evaluation, trusted restricted execution, and the
-SHA-256 payload-integrity ledger.
+scoped coverage evaluation, trusted restricted preflight, externally isolated
+sandbox execution, and the SHA-256 payload-integrity ledger.
 
 1. **RECEIVED** — capture the objective and initialize an isolated project.
 2. **STRUCTURED** — separate invariants, mutable assumptions, and subtasks.
 3. **STRATIFIED** — produce Conservative, Orthogonal, and Disruptive pathways.
-4. **RESTRICTED_EXECUTION_VERIFIED** — the trusted internal check passed and is bound to the persisted selected candidate/protocol. This is in-process restricted execution, not a security sandbox or scientific validation.
-5. **COMPLETED** — the workflow finished and exported the integrity-addressed dossier. Completion does not imply verification PASS or scientific validity.
+4. **RESTRICTED_EXECUTION_VERIFIED** — the trusted internal preflight passed and is bound to the persisted selected candidate/protocol. This is in-process restricted execution, not a security sandbox or scientific validation.
+5. **SECURE_SANDBOX_VERIFIED** — the fixed completion protocol passed in an externally isolated Docker container with network disabled, read-only rootfs, dropped capabilities, no-new-privileges, non-root UID, and CPU/RAM/PID limits.
+6. **COMPLETED** — the workflow finished only after verification PASS/CONDITIONAL_PASS, current bound restricted preflight, and current isolated bound sandbox PASS. Completion still does **not** imply scientific validity or deployed-system safety.
 
 The model is an interchangeable assistant, not a hidden requirement. The
-application can execute the complete workflow offline and can optionally use
+application can execute without a model provider and can optionally use
 Hermes/Nous, Ollama, OpenAI, or any OpenAI-compatible local/cloud endpoint.
+A completed workflow additionally requires a locally available Docker daemon
+and a pre-pulled sandbox image; otherwise completion remains fail-closed.
 
 ## Architecture
 
@@ -31,7 +34,8 @@ Provider-neutral Taskmaster facade ---- optional model provider
           |
           v
 Deterministic stage runner
-  decompose -> synthesize -> coverage-check -> restricted-check -> checkpoint
+  decompose -> synthesize -> coverage-check -> restricted-preflight
+            -> secure-container-check -> checkpoint
           |
           v
 Thread-safe state + JSON/Markdown/HTML dossier + SHA-256 ledger
@@ -70,6 +74,10 @@ curl -X POST http://127.0.0.1:8080/api/v1/generate ^
 set SUPRA_PROVIDER=ollama
 set SUPRA_OLLAMA_MODEL=llama3.2
 
+# Configure the fail-closed secure sandbox once.
+docker pull python:3.12-alpine
+set SUPRA_SANDBOX_IMAGE=python:3.12-alpine
+
 # Enable optional model assistance during a project run.
 curl -X POST http://127.0.0.1:8080/api/v1/projects ^
   -H "Content-Type: application/json" ^
@@ -105,7 +113,7 @@ Open `http://127.0.0.1:8080`.
 - `GET /health` — service and non-secret active-provider metadata.
 - `GET /api/v1/providers` — supported provider presets.
 - `POST /api/v1/generate` — direct provider generation.
-- `POST /api/v1/projects` — run the five-stage workflow.
+- `POST /api/v1/projects` — run the gated workflow.
 - `GET /api/v1/projects` — list persisted projects.
 - `GET /api/v1/projects/{project_id}` — retrieve full project telemetry.
 - `GET /api/v1/examples/quick-run` — deterministic local example.
@@ -135,8 +143,14 @@ same Uvicorn application and does not assume a hosting vendor or provider.
   headers.
 - Restricted execution is in-process, accepts only the trusted internal contract,
   rejects imports/unbounded loop constructs, and is **not** an OS/process sandbox.
-- A restricted PASS is scoped to that internal protocol; it is not proof of
-  deployed-system safety or scientific validation.
+- The secure sandbox has no in-process fallback. `SUPRA_SANDBOX_IMAGE` must name
+  a pre-pulled image; implicit pulls are forbidden. The tag is resolved to an
+  immutable image ID and that ID is included in the protocol hash.
+- The Docker sandbox runs with `--network=none`, read-only rootfs, all
+  capabilities dropped, `no-new-privileges=true`, UID/GID 65534, PID/RAM/CPU
+  limits, no IPC namespace sharing, and a bounded timeout.
+- A restricted or sandbox PASS is scoped to its executed protocol; neither is
+  proof of deployed-system safety or scientific validation.
 - SHA-256 identifies serialized payload integrity relative to the hashed bytes;
   it is not evidence that the payload is true.
 
