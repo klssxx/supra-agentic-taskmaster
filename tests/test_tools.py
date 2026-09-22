@@ -4,7 +4,7 @@ import tempfile
 
 import pytest
 from supra_agentic.models import TaskmasterStage
-from supra_agentic.state import state_manager
+from supra_agentic.state import CompletionGateError, state_manager
 from supra_agentic.tools import (
     SUPRA_TOOLS,
     decompose_objective,
@@ -67,16 +67,29 @@ def test_full_tool_cycle_execution():
         assert r4["stage"] == TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED.value
         assert r4["restricted_execution_result"]["passed"] is True
 
-        # 5. Checkpoint / Final Deliverable
-        r5 = record_checkpoint(
-            pid,
-            deliverable_title="Multi-Region Zero-Loss Failover Plan",
-            summary="Autonomous plan synthesized and verified.",
-        )
-        assert r5["status"] == "success"
-        assert r5["stage"] == TaskmasterStage.COMPLETED.value
-        assert "audit_sha256" in r5["final_deliverable"]
-        assert len(r5["final_deliverable"]["audit_sha256"]) == 64
+        # 5. Checkpoint / Final Deliverable. Completion is a real gate:
+        # only passing verification plus the bound restricted execution may finish.
+        if report["verdict"] in {"PASS", "CONDITIONAL_PASS"}:
+            r5 = record_checkpoint(
+                pid,
+                deliverable_title="Multi-Region Zero-Loss Failover Plan",
+                summary="Autonomous plan synthesized and verified.",
+            )
+            assert r5["status"] == "success"
+            assert r5["stage"] == TaskmasterStage.COMPLETED.value
+            assert "audit_sha256" in r5["final_deliverable"]
+            assert len(r5["final_deliverable"]["audit_sha256"]) == 64
+        else:
+            with pytest.raises(CompletionGateError):
+                record_checkpoint(
+                    pid,
+                    deliverable_title="Multi-Region Zero-Loss Failover Plan",
+                    summary="Autonomous plan reached a blocked completion gate.",
+                )
+            current = state_manager.get_project(pid)
+            assert current is not None
+            assert current.stage == TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED
+            assert current.final_output is None
 
 
 def test_untrusted_python_source_is_rejected():

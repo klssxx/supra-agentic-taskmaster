@@ -65,22 +65,28 @@ def test_runner_golden_path_execution():
             domain="data_pipeline",
         )
 
-        assert posture.stage == TaskmasterStage.COMPLETED
         assert posture.decomposition is not None
         assert posture.decomposition.domain == "data_pipeline"
         assert len(posture.candidates) == 3
         assert posture.selected_candidate is not None
         assert posture.verification is not None
         # contrato honesto: el verdict se deriva de la evidencia ejecutada,
-        # nunca garantizado de antemano. NOT_EVALUATED es un estado válido.
+        # nunca garantizado de antemano. NOT_EVALUATED es un estado válido,
+        # pero ya no satisface el gate de completion.
         assert posture.verification.verdict in {"PASS", "CONDITIONAL_PASS", "FAIL", "NOT_EVALUATED"}
         assert 0.0 <= posture.verification.confidence_score <= 1.0
         assert len(posture.restricted_execution_results) >= 1
         assert posture.restricted_execution_results[-1].passed is True
-        assert posture.final_output is not None
-        assert "audit_sha256" in posture.final_output
-        assert "null_hypothesis_h0" in posture.final_output
-        assert len(posture.checkpoints) >= 5
+
+        if posture.verification.verdict in {"PASS", "CONDITIONAL_PASS"}:
+            assert posture.stage == TaskmasterStage.COMPLETED
+            assert posture.final_output is not None
+            assert "audit_sha256" in posture.final_output
+            assert "null_hypothesis_h0" in posture.final_output
+        else:
+            assert posture.stage == TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED
+            assert posture.final_output is None
+            assert posture.checkpoints[-1].title == "Completion Gate Blocked"
 
 
 def test_runner_self_correction_feedback():

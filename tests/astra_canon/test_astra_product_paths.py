@@ -9,13 +9,12 @@ import supra_agentic.runner as runner_module
 from pydantic import ValidationError
 from supra_agentic.models import ProjectPosture, TaskmasterStage, VerificationReport
 from supra_agentic.runner import TaskmasterRunner
-from supra_agentic.state import state_manager
+from supra_agentic.state import CompletionGateError, state_manager
 from supra_agentic.tools import (
     decompose_objective,
     record_checkpoint,
     restricted_python_executor,
     synthesize_strategy,
-    verify_solution,
 )
 
 
@@ -37,6 +36,28 @@ def _selected_project():
     posture = state_manager.get_project(project.project_id)
     assert posture and posture.selected_candidate
     return tmp, posture
+
+
+def _prepare_completion_fixture(posture: ProjectPosture) -> None:
+    """Install explicit test-only completion evidence; never used by product code."""
+    selected = posture.selected_candidate
+    assert selected is not None
+    state_manager.record_verification(
+        posture.project_id,
+        VerificationReport(
+            candidate_id=selected.candidate_id,
+            invariants_preserved=True,
+            invariants_checked=["test-fixture completion invariant"],
+            vulnerabilities_detected=[],
+            confidence_score=1.0,
+            verdict="PASS",
+            rationale="TEST_FIXTURE_ONLY: explicit passing completion evidence.",
+            evidence=[{"status": "PASS", "scope": "TEST_FIXTURE_ONLY"}],
+        ),
+    )
+    result = restricted_python_executor(posture.project_id)["restricted_execution_result"]
+    assert result["passed"] is True
+    assert result["identity_bound"] is True
 
 
 def test_astra_006_verdict_vocabulary_is_closed_and_score_semantics_are_scoped():
@@ -94,19 +115,17 @@ def test_astra_017_caller_identity_assertion_cannot_override_persisted_candidate
         tmp.cleanup()
 
 
-def test_astra_020_not_evaluated_can_complete_workflow_without_becoming_validation():
+def test_astra_020_not_evaluated_cannot_satisfy_completion_gate():
     tmp, project = _fresh_project()
     try:
-        result = record_checkpoint(project.project_id, "title", "summary")
-        final = result["final_deliverable"]
-        assert result["stage"] == "COMPLETED"
-        assert final["workflow_status"] == "COMPLETED"
-        assert final["verification_verdict"] == "NOT_EVALUATED"
-        assert final["h0_evaluation_status"] == "NOT_EVALUATED"
-        assert final["scientific_status"] == "NOT_VALIDATED"
-        assert final["independent_confirmation_status"] == "NOT_ESTABLISHED"
-        assert final["learning_update_status"] == "NOT_APPLICABLE"
-        assert final["integrity_semantics"] == "SHA256_OF_SERIALIZED_PAYLOAD_NOT_TRUTH"
+        with pytest.raises(CompletionGateError):
+            record_checkpoint(project.project_id, "title", "summary")
+        current = state_manager.get_project(project.project_id)
+        assert current is not None
+        assert current.verification is None
+        assert current.stage is not TaskmasterStage.COMPLETED
+        assert current.final_output is None
+        assert current.checkpoints[-1].title == "Completion Gate Blocked"
     finally:
         tmp.cleanup()
 
@@ -114,8 +133,7 @@ def test_astra_020_not_evaluated_can_complete_workflow_without_becoming_validati
 def test_astra_024_026_checkpoint_declares_incomplete_dependency_and_budget_closure():
     tmp, posture = _selected_project()
     try:
-        verify_solution(posture.project_id)
-        restricted_python_executor(posture.project_id)
+        _prepare_completion_fixture(posture)
         final = record_checkpoint(posture.project_id, "title", "summary")["final_deliverable"]
         deps = final["reproducibility_dependencies"]
         accounting = final["opportunity_accounting"]
@@ -132,8 +150,9 @@ def test_astra_024_026_checkpoint_declares_incomplete_dependency_and_budget_clos
 
 
 def test_astra_028_strong_scientific_evaluator_claims_remain_disabled():
-    tmp, project = _fresh_project()
+    tmp, project = _selected_project()
     try:
+        _prepare_completion_fixture(project)
         final = record_checkpoint(project.project_id, "title", "summary")["final_deliverable"]
         controls = final["evaluator_controls"]
         assert controls == {
@@ -321,7 +340,7 @@ def test_astra_b03_current_semantics_with_forged_candidate_identity_is_downgrade
     assert posture.checkpoints[-1].title == "Persisted execution accreditation invalidated"
 
 
-def test_astra_b03_completed_workflow_keeps_completion_but_invalidates_stale_execution_cache():
+def test_astra_b03_completed_workflow_revalidates_and_revokes_stale_completion():
     raw = {
         "project_id": "completed-stale-derived",
         "objective": "completed-stale-derived",
@@ -359,10 +378,13 @@ def test_astra_b03_completed_workflow_keeps_completion_but_invalidates_stale_exe
         "checkpoints": [],
     }
     posture = ProjectPosture.model_validate(raw)
-    assert posture.stage is TaskmasterStage.COMPLETED
+    assert posture.stage is TaskmasterStage.STRATIFIED
     assert posture.restricted_execution_results[0].identity_bound is False
     assert posture.final_output is not None
-    assert posture.final_output["workflow_status"] == "COMPLETED"
+    assert posture.final_output["workflow_status"] == "BLOCKED"
+    assert posture.final_output["completion_status"] == "BLOCKED"
     assert posture.final_output["restricted_execution_identity_bound"] is False
     assert posture.final_output["restricted_execution_status"] == "UNBOUND"
     assert posture.final_output["derived_execution_state_revalidated"] is True
+    assert posture.final_output["derived_completion_state_revalidated"] is True
+    assert posture.checkpoints[-1].title == "Persisted completion invalidated"

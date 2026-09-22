@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import tempfile
 import threading
 import time
@@ -29,6 +30,18 @@ from .models import (
 )
 
 logger = logging.getLogger("supra_agentic.state")
+PROJECT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+
+
+class CompletionGateError(RuntimeError):
+    """Raised when workflow completion lacks required independent gate evidence."""
+
+
+def validate_project_id(project_id: str) -> str:
+    """Validate the storage identity before any filesystem path is constructed."""
+    if not isinstance(project_id, str) or not PROJECT_ID_RE.fullmatch(project_id):
+        raise ValueError("project_id must match ^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+    return project_id
 
 
 def _get_storage_configuration(
@@ -60,7 +73,9 @@ class ProjectStateManager:
     def create_project(self, objective: str, project_id: str | None = None) -> ProjectPosture:
         """Create a new project session in RECEIVED stage."""
         with self._lock:
-            pid = project_id or f"proj-{uuid.uuid4().hex[:8]}"
+            pid = validate_project_id(project_id or f"proj-{uuid.uuid4().hex[:8]}")
+            if pid in self._projects or (self.storage_dir / f"{pid}.json").exists():
+                raise ValueError(f"Project '{pid}' already exists.")
             now = time.time()
             posture = ProjectPosture(
                 project_id=pid,
@@ -83,6 +98,7 @@ class ProjectStateManager:
 
     def get_project(self, project_id: str) -> ProjectPosture | None:
         """Retrieve a project state by ID."""
+        project_id = validate_project_id(project_id)
         with self._lock:
             if project_id in self._projects:
                 return self._projects[project_id]
@@ -230,12 +246,9 @@ class ProjectStateManager:
             return p
 
     def complete_project(self, project_id: str, final_output: dict[str, Any]) -> ProjectPosture:
-        """Mark workflow completion without implying verification or scientific proof."""
+        """Complete only when verification and restricted-execution gates both pass."""
         with self._lock:
             p = self._get_required_project(project_id)
-            p.final_output = final_output
-            p.stage = TaskmasterStage.COMPLETED
-            p.updated_at = time.time()
             verification_status = str(p.verification.verdict) if p.verification else "NOT_EVALUATED"
             latest_execution = (
                 p.restricted_execution_results[-1] if p.restricted_execution_results else None
@@ -249,6 +262,30 @@ class ProjectStateManager:
                 if latest_execution
                 else "NOT_RUN"
             )
+            verification_gate = verification_status in {"PASS", "CONDITIONAL_PASS"}
+            execution_gate = execution_status == "BOUND_PASS"
+            if not verification_gate or not execution_gate:
+                p.updated_at = time.time()
+                p.checkpoints.append(
+                    CheckpointRecord(
+                        stage=p.stage,
+                        title="Completion Gate Blocked",
+                        evidence_summary=(
+                            f"Completion blocked. Verification gate: {verification_status}. "
+                            f"Restricted execution gate: {execution_status}."
+                        ),
+                        actor="system:completion_gate",
+                    )
+                )
+                self._persist_project(project_id)
+                raise CompletionGateError(
+                    "Completion requires verification PASS/CONDITIONAL_PASS and "
+                    "current BOUND_PASS restricted execution."
+                )
+
+            p.final_output = final_output
+            p.stage = TaskmasterStage.COMPLETED
+            p.updated_at = time.time()
             p.checkpoints.append(
                 CheckpointRecord(
                     stage=TaskmasterStage.COMPLETED,
@@ -289,7 +326,12 @@ class ProjectStateManager:
             for p_file in self.storage_dir.glob("*.json"):
                 pid = p_file.stem
                 if pid not in self._projects:
-                    self.get_project(pid)
+                    try:
+                        self.get_project(pid)
+                    except ValueError:
+                        logger.warning(
+                            "Ignoring invalid persisted project filename: %s", p_file.name
+                        )
             items = list(self._projects.values())
             items.sort(key=lambda x: x.updated_at, reverse=True)
             return items[:limit]
@@ -301,7 +343,8 @@ class ProjectStateManager:
         return p
 
     def _persist_project(self, project_id: str) -> None:
-        """Persist project to disk with proper error handling (B-6 fix)."""
+        """Persist project atomically after validating its storage identity."""
+        project_id = validate_project_id(project_id)
         p = self._projects.get(project_id)
         if not p:
             logger.error(f"Cannot persist non-existent project {project_id}")

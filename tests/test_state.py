@@ -2,6 +2,7 @@
 
 import tempfile
 
+import pytest
 from supra_agentic.models import (
     RESTRICTED_EXECUTION_SEMANTICS_VERSION,
     RestrictedExecutionResult,
@@ -12,7 +13,7 @@ from supra_agentic.models import (
     VerificationReport,
     candidate_execution_identity,
 )
-from supra_agentic.state import ProjectStateManager
+from supra_agentic.state import CompletionGateError, ProjectStateManager
 
 
 def test_project_lifecycle_transitions():
@@ -192,6 +193,18 @@ def test_completed_workflow_preserves_completion_but_latest_failure_revises_exec
                 duration_ms=1.0,
             )
 
+        sm.record_verification(
+            p.project_id,
+            VerificationReport(
+                candidate_id=selected.candidate_id,
+                invariants_preserved=True,
+                invariants_checked=["bounded"],
+                vulnerabilities_detected=[],
+                confidence_score=1.0,
+                verdict="PASS",
+                rationale="Bounded test evidence.",
+            ),
+        )
         sm.record_restricted_execution(p.project_id, _result(True))
         completed = sm.complete_project(
             p.project_id,
@@ -209,3 +222,116 @@ def test_completed_workflow_preserves_completion_but_latest_failure_revises_exec
         assert revised.final_output["restricted_execution_status"] == "BOUND_FAIL"
         assert revised.final_output["restricted_execution_identity_bound"] is True
         assert revised.final_output["derived_execution_state_revalidated"] is True
+
+
+@pytest.mark.parametrize("verdict", ["FAIL", "NOT_EVALUATED"])
+def test_completion_gate_rejects_failed_or_missing_verification(verdict: str) -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        sm = ProjectStateManager(storage_dir=tmpdir)
+        p = sm.create_project(objective="completion gate verification semantics")
+        cand = StrategyCandidate(
+            pathway_name="Bound Path",
+            paradigm_type="ORTHOGONAL",
+            hypothesis="Bound hypothesis",
+            action_plan=["bounded step"],
+            divergence_score=0.5,
+            feasibility_score=0.5,
+        )
+        posture = sm.add_candidates(p.project_id, [cand], select_best=True)
+        selected = posture.selected_candidate
+        assert selected is not None
+        identity = candidate_execution_identity(selected)
+        sm.record_verification(
+            p.project_id,
+            VerificationReport(
+                candidate_id=selected.candidate_id,
+                invariants_preserved=False,
+                invariants_checked=["bounded"],
+                vulnerabilities_detected=["bounded"],
+                confidence_score=0.0,
+                verdict=verdict,
+                rationale="No passing verification evidence.",
+            ),
+        )
+        sm.record_restricted_execution(
+            p.project_id,
+            RestrictedExecutionResult(
+                candidate_id=identity["candidate_id"],
+                mechanism_version=identity["mechanism_version"],
+                claim_id=identity["claim_id"],
+                protocol_version="sha256:test-protocol",
+                execution_semantics_version=RESTRICTED_EXECUTION_SEMANTICS_VERSION,
+                action_type="RESTRICTED_CODE_RUN",
+                passed=True,
+                output_log="restricted pass",
+                duration_ms=1.0,
+            ),
+        )
+
+        with pytest.raises(CompletionGateError):
+            sm.complete_project(p.project_id, {"workflow_status": "COMPLETED"})
+
+        blocked = sm.get_project(p.project_id)
+        assert blocked is not None
+        assert blocked.stage != TaskmasterStage.COMPLETED
+        assert blocked.final_output is None
+        assert blocked.checkpoints[-1].title == "Completion Gate Blocked"
+
+
+def test_completion_gate_requires_current_bound_execution_pass() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        sm = ProjectStateManager(storage_dir=tmpdir)
+        p = sm.create_project(objective="completion execution gate semantics")
+        cand = StrategyCandidate(
+            pathway_name="Bound Path",
+            paradigm_type="ORTHOGONAL",
+            hypothesis="Bound hypothesis",
+            action_plan=["bounded step"],
+            divergence_score=0.5,
+            feasibility_score=0.5,
+        )
+        posture = sm.add_candidates(p.project_id, [cand], select_best=True)
+        selected = posture.selected_candidate
+        assert selected is not None
+        sm.record_verification(
+            p.project_id,
+            VerificationReport(
+                candidate_id=selected.candidate_id,
+                invariants_preserved=True,
+                invariants_checked=["bounded"],
+                vulnerabilities_detected=[],
+                confidence_score=1.0,
+                verdict="PASS",
+                rationale="Verification passes but execution is absent.",
+            ),
+        )
+
+        with pytest.raises(CompletionGateError):
+            sm.complete_project(p.project_id, {"workflow_status": "COMPLETED"})
+
+        blocked = sm.get_project(p.project_id)
+        assert blocked is not None
+        assert blocked.stage == TaskmasterStage.STRATIFIED
+        assert blocked.final_output is None
+
+
+@pytest.mark.parametrize(
+    "project_id",
+    ["../escape", "..", "a/b", r"a\\b", ".hidden", "bad id", "x" * 65],
+)
+def test_project_id_rejects_path_traversal_and_unsafe_names(project_id: str) -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        sm = ProjectStateManager(storage_dir=tmpdir)
+        with pytest.raises(ValueError):
+            sm.create_project(objective="safe storage identity", project_id=project_id)
+
+
+def test_project_id_cannot_overwrite_existing_project() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        sm = ProjectStateManager(storage_dir=tmpdir)
+        original = sm.create_project(objective="first project", project_id="safe-project")
+        with pytest.raises(ValueError):
+            sm.create_project(objective="replacement project", project_id="safe-project")
+        loaded = sm.get_project(original.project_id)
+        assert loaded is not None
+        assert loaded.objective == "first project"
