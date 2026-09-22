@@ -70,6 +70,8 @@ def test_secure_docker_command_enforces_isolation_controls(
     assert receipt.image_id == image_id
     assert receipt.protocol_version is not None
     assert receipt.protocol_version.startswith("sha256:")
+    assert receipt.execution_scope == "IDENTITY_BOUNDARY_SMOKE_ONLY"
+    assert receipt.candidate_mechanism_executed is False
     assert receipt.scientific_validation is False
 
     assert len(calls) == 2
