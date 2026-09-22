@@ -240,3 +240,7 @@ def run_python_in_secure_docker(
                 non_root_user=True,
                 resource_limits_applied=True,
             )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise SandboxUnavailableError(
+                "Docker sandbox execution became unavailable"
+            ) from exc
