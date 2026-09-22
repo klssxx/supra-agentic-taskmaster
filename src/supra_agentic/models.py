@@ -274,6 +274,12 @@ class ProjectPosture(BaseModel):
         latest_authoritative_bound_pass = bool(
             latest_execution and latest_execution.passed and latest_execution.identity_bound
         )
+        verification_allows_completion = bool(
+            self.verification is not None
+            and self.selected_candidate is not None
+            and self.verification.candidate_id == self.selected_candidate.candidate_id
+            and self.verification.verdict in {"PASS", "CONDITIONAL_PASS"}
+        )
         if self.final_output is not None:
             output = dict(self.final_output)
             output["restricted_execution_identity_bound"] = bool(
@@ -304,6 +310,37 @@ class ProjectPosture(BaseModel):
                         "Execution-derived stage was downgraded on load because "
                         "no current-semantics bound pass matches the persisted "
                         "selected candidate."
+                    ),
+                    actor="system:migration_guard",
+                )
+            )
+
+        if self.stage is TaskmasterStage.COMPLETED and not (
+            verification_allows_completion and latest_authoritative_bound_pass
+        ):
+            if latest_authoritative_bound_pass:
+                repaired_stage = TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED
+            elif self.selected_candidate is not None:
+                repaired_stage = TaskmasterStage.STRATIFIED
+            elif self.decomposition is not None:
+                repaired_stage = TaskmasterStage.STRUCTURED
+            else:
+                repaired_stage = TaskmasterStage.RECEIVED
+            self.stage = repaired_stage
+            if self.final_output is not None:
+                output = dict(self.final_output)
+                output["workflow_status"] = "BLOCKED"
+                output["completion_status"] = "BLOCKED"
+                output["derived_completion_state_revalidated"] = True
+                self.final_output = output
+            self.checkpoints.append(
+                CheckpointRecord(
+                    stage=repaired_stage,
+                    title="Persisted completion invalidated",
+                    evidence_summary=(
+                        "COMPLETED was downgraded on load because current "
+                        "verification and restricted-execution completion gates "
+                        "do not both pass."
                     ),
                     actor="system:migration_guard",
                 )
