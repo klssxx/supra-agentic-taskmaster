@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .dossier import export_full_html_dossier
 from .mcp_handler import handle_mcp_jsonrpc_request
+from .models import ProjectPosture
 from .providers import ProviderError, get_provider, provider_names
 from .runner import TaskmasterRunner, taskmaster_runner
 from .state import state_manager, validate_project_id
