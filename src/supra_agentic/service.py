@@ -358,10 +358,11 @@ def example_quick_run() -> dict[str, Any]:
         domain="cloud_security",
         allow_disruptive=True,
     )
+    completed = posture.stage.value == "COMPLETED"
     return {
-        "status": "success",
+        "status": "success" if completed else "blocked",
         "example": True,
-        "stages_completed": 5,
+        "completion_status": "COMPLETED" if completed else "BLOCKED",
         "workflow_status": posture.stage.value,
         "verification_status": (
             posture.verification.verdict if posture.verification else "NOT_EVALUATED"
