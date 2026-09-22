@@ -1,169 +1,167 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SUPRA — Autonomous Taskmaster Agent</title>
-
-    <link rel="stylesheet" href="/static/style.css?v=2.5">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SUPRA — Causal Intelligence Workbench</title>
+  <link rel="stylesheet" href="/static/style.css?v=3.0">
 </head>
-<body class="dark-theme">
-    <!-- Top Header Bar -->
-    <header class="top-bar">
-        <div class="brand">
-            <div class="brand-badge">TASKMASTER</div>
-            <div class="brand-titles">
-                <h1>SUPRA <span class="accent-text">AGENTIC OS</span></h1>
-                <span class="sub-brand">Autonomous Multi-Stage Innovation Engine &bull; Provider Agnostic &bull; Deterministic Gates</span>
-            </div>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-orbit"><span></span></div>
+      <div class="brand-word">SUPRA</div>
+      <div class="brand-tagline">CAUSAL INTELLIGENCE FOR BETTER DECISIONS</div>
+    </div>
+    <div class="global-search">
+      <span class="search-icon">⌕</span>
+      <input id="global-search" type="search" placeholder="Buscar proyecto, estrategia, evidencia…">
+      <span class="shortcut">⌘K</span>
+    </div>
+    <div class="top-actions">
+      <span class="evidence-motto">EVIDENCIA REAL. MEJORES DECISIONES.</span>
+      <span id="connection-pill" class="connection-pill"><i></i> Conectando</span>
+    </div>
+  </header>
+
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="sidebar-label">ESPACIO DE TRABAJO</div>
+      <nav id="workspace-nav" class="workspace-nav" aria-label="Secciones SUPRA">
+        <button class="nav-item active" data-view="dashboard"><span>◎</span><b>Objetivo</b><small>Resumen y ejecución</small></button>
+        <button class="nav-item" data-view="decomposition"><span>⌘</span><b>Descomposición</b><small>Invariantes y supuestos</small></button>
+        <button class="nav-item" data-view="strategies"><span>◇</span><b>Estrategias</b><small>Rutas y selección</small></button>
+        <button class="nav-item" data-view="verification"><span>✓</span><b>Verificación</b><small>Pruebas y veredictos</small></button>
+        <button class="nav-item" data-view="sandbox"><span>△</span><b>Sandbox</b><small>Ejecución contenida</small></button>
+        <button class="nav-item" data-view="evidence"><span>▤</span><b>Evidencia</b><small>Ledger y checkpoints</small></button>
+        <button class="nav-item" data-view="dossiers"><span>▣</span><b>Dossiers</b><small>Informes y exportación</small></button>
+        <button class="nav-item" data-view="providers"><span>◈</span><b>Proveedores</b><small>Modelos conectados</small></button>
+        <button class="nav-item" data-view="projects"><span>☷</span><b>Proyectos</b><small>Historial persistido</small></button>
+      </nav>
+
+      <div class="project-mini">
+        <div class="mini-label">PROYECTO ACTUAL</div>
+        <strong id="mini-project">Sin proyecto</strong>
+        <span id="mini-objective">Define un objetivo para comenzar.</span>
+        <div class="mini-divider"></div>
+        <div class="mini-label">ESTADO</div>
+        <span id="mini-stage" class="mini-stage">STANDBY</span>
+      </div>
+      <blockquote>“Decidir mejor empieza por distinguir evidencia, hipótesis y desconocido.”</blockquote>
+    </aside>
+
+    <main class="workspace">
+      <section class="objective-bar">
+        <div class="objective-mark">◎</div>
+        <div class="objective-copy">
+          <span class="eyebrow">OBJETIVO ACTUAL</span>
+          <h1 id="objective-title">Define un objetivo para SUPRA</h1>
+          <p id="objective-subtitle">Descomposición, estrategias, verificación y dossier con trazabilidad.</p>
         </div>
-        <div class="system-status">
-            <div class="status-chip">
-                <span class="indicator active"></span>
-                <span class="mono-text">MODEL PROVIDER</span>
-            </div>
-            <div class="status-chip">
-                <span class="indicator active"></span>
-                <span class="mono-text">TOOL CONTRACTS</span>
-            </div>
-            <div class="status-chip">
-                <span class="indicator active"></span>
-                <span class="mono-text">LOCAL CORE</span>
-            </div>
+        <div class="objective-controls">
+          <label>Dominio
+            <select id="domain-select">
+              <option value="general">General</option>
+              <option value="cloud_security">Cloud Security</option>
+              <option value="data_pipeline">Data Pipeline</option>
+              <option value="distributed_systems">Distributed Systems</option>
+            </select>
+          </label>
+          <label class="toggle-control">
+            <input type="checkbox" id="disruptive-toggle" checked>
+            <span>Disruptivas</span>
+          </label>
+          <label class="toggle-control">
+            <input type="checkbox" id="model-toggle">
+            <span>Asistencia IA</span>
+          </label>
+          <button id="run-btn" class="btn btn-primary" type="button">✦ Ejecutar SUPRA</button>
         </div>
-    </header>
+      </section>
 
-    <!-- Main Container -->
-    <main class="app-layout">
-        <!-- Left Column: Input & Controls -->
-        <section class="control-panel card">
-            <div class="card-header">
-                <h2>What do you want to solve?</h2>
-                <span class="badge badge-primary">Taskmaster</span>
+      <section id="view-dashboard" class="view active">
+        <div class="dashboard-grid">
+          <article class="panel decomposition-panel">
+            <div class="panel-head"><div><span class="panel-icon">⌘</span> Descomposición del objetivo</div><span id="decomp-count" class="panel-meta">0 invariantes</span></div>
+            <div class="segmented"><button class="active">Invariantes</button><button>Supuestos mutables</button></div>
+            <div id="decomposition-tree" class="objective-tree empty-panel">Ejecuta SUPRA para construir el mapa del objetivo.</div>
+          </article>
+
+          <article class="panel graph-panel">
+            <div class="panel-head">
+              <div><span class="panel-icon">◎</span> Grafo causal / flujo de decisión</div>
+              <div class="graph-tools"><span>Vista: SUPRA DAG</span><span id="graph-node-count">0 nodos</span><span>100%</span></div>
             </div>
-            
-            <p class="section-desc">
-                State any complex engineering, architecture, or cybersecurity challenge. 
-                SUPRA autonomously decomposes, formulates orthogonal strategies, runs sandbox verification, and produces verifiable deliverables.
-            </p>
+            <div class="canvas-wrap"><canvas id="causal-dag-canvas"></canvas><div class="graph-legend"><span><i class="dot invariant"></i> Invariante</span><span><i class="dot strategy"></i> Estrategia</span><span><i class="dot verify"></i> Verificación</span><span><i class="dot output"></i> Resultado</span></div></div>
+          </article>
 
-            <form id="task-form" onsubmit="handleRunTask(event)">
-                <div class="form-group">
-                    <label for="objective-input">Objective / Question:</label>
-                    <textarea 
-                        id="objective-input" 
-                        rows="4" 
-                        placeholder="e.g. Design an autonomous secretless service mesh with continuous invariant verification and automated rollback."
-                        required
-                    ></textarea>
-                </div>
-
-                <div class="form-row">
-                    <div class="form-group half">
-                        <label for="domain-select">Problem Domain:</label>
-                        <select id="domain-select">
-                            <option value="cloud_security">Cloud Security & Zero-Trust</option>
-                            <option value="data_pipeline">Self-Healing Data Pipelines</option>
-                            <option value="distributed_systems">Distributed Consensus</option>
-                            <option value="general">General Innovation</option>
-                        </select>
-                    </div>
-                    <div class="form-group half checkbox-group">
-                        <label>
-                            <input type="checkbox" id="disruptive-toggle" checked>
-                            Allow Disruptive Pathways
-                        </label>
-                    </div>
-                </div>
-
-                <div class="action-buttons">
-                    <button type="submit" class="btn btn-primary" id="run-btn">
-                        <span class="btn-icon">⚡</span>
-                        <span>RUN TASKMASTER</span>
-                    </button>
-                    <button type="button" class="btn btn-accent" onclick="handleExampleRun()">
-                        <span class="btn-icon">✨</span>
-                        <span>RUN DETERMINISTIC EXAMPLE</span>
-                    </button>
-                </div>
-            </form>
-
-            <div class="recent-projects-box">
-                <h3>Recent Executions</h3>
-                <div id="recent-list" class="recent-list">
-                    <div class="placeholder-text">No prior executions loaded.</div>
-                </div>
+          <article class="panel control-panel">
+            <div class="panel-head"><div><span class="panel-icon">⚡</span> Ejecución / Intervención</div><span id="run-status" class="status-badge neutral">STANDBY</span></div>
+            <label class="field-label">Objetivo</label>
+            <textarea id="objective-input" rows="5" placeholder="Describe el problema o decisión que quieres resolver…"></textarea>
+            <div class="control-summary">
+              <div><small>Proveedor</small><strong id="provider-name">—</strong></div>
+              <div><small>Etapa</small><strong id="current-stage">STANDBY</strong></div>
             </div>
+            <button id="example-btn" class="btn btn-secondary" type="button">Ejecutar ejemplo determinista</button>
+          </article>
+
+          <article class="panel strategies-panel">
+            <div class="panel-head"><div><span class="panel-icon">◇</span> Estrategias alternativas</div><span id="candidate-count" class="panel-meta">0 candidatas</span></div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>#</th><th>Estrategia</th><th>Paradigma</th><th>Factibilidad</th><th>Divergencia</th><th>Estado</th></tr></thead>
+                <tbody id="strategies-body"><tr><td colspan="6" class="empty-row">Sin estrategias todavía.</td></tr></tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="panel validation-panel">
+            <div class="panel-head"><div><span class="panel-icon">△</span> Verificación y sandbox</div><span id="verification-verdict" class="status-badge neutral">NO EVALUADO</span></div>
+            <div class="metrics-row">
+              <div class="metric-card"><small>Confianza</small><strong id="verification-confidence">0%</strong></div>
+              <div class="metric-card"><small>Sandbox</small><strong id="sandbox-status">—</strong></div>
+            </div>
+            <div id="verification-evidence" class="check-list empty-panel">La evidencia de invariantes aparecerá aquí.</div>
+          </article>
+
+          <article class="panel evidence-panel">
+            <div class="panel-head"><div><span class="panel-icon">▤</span> Registro de evidencia</div><span id="checkpoint-count" class="panel-meta">0 eventos</span></div>
+            <div id="checkpoint-ledger" class="ledger empty-panel">Sin checkpoints registrados.</div>
+          </article>
+        </div>
+
+        <section class="conclusion-bar">
+          <div class="conclusion-icon">✓</div>
+          <div class="conclusion-copy"><strong>Conclusión actual</strong><span id="conclusion-text">Todavía no hay una ejecución evaluada.</span></div>
+          <div id="conclusion-verdict" class="conclusion-verdict">UNKNOWN</div>
+          <button id="dossier-btn" class="btn btn-secondary" type="button" disabled>Generar / ver dossier</button>
         </section>
+      </section>
 
-        <!-- Right Column: Live 5-Stage Visualizer, Causal Canvas & Deliverables -->
-        <section class="output-panel card">
-            <div class="card-header">
-                <h2>Autonomous 5-Stage Execution Stream & Causal DAG</h2>
-                <span class="stage-tag" id="current-stage-tag">STANDBY</span>
-            </div>
-
-            <!-- Interactive 2D Vector Causal Canvas -->
-            <div style="background: #04060A; border-radius: 8px; border: 1px solid var(--border-subtle); margin-bottom: 1rem; overflow: hidden; height: 160px; position: relative;">
-                <canvas id="causal-dag-canvas" style="width: 100%; height: 100%; display: block;"></canvas>
-            </div>
-
-            <!-- Stage Progress Bar -->
-            <div class="stage-stepper">
-                <div class="step" id="step-received">
-                    <div class="step-num">01</div>
-                    <div class="step-label">Received</div>
-                </div>
-                <div class="step-connector"></div>
-                <div class="step" id="step-structured">
-                    <div class="step-num">02</div>
-                    <div class="step-label">Structured</div>
-                </div>
-                <div class="step-connector"></div>
-                <div class="step" id="step-stratified">
-                    <div class="step-num">03</div>
-                    <div class="step-label">Stratified</div>
-                </div>
-                <div class="step-connector"></div>
-                <div class="step" id="step-sandbox">
-                    <div class="step-num">04</div>
-                    <div class="step-label">Sandbox</div>
-                </div>
-                <div class="step-connector"></div>
-                <div class="step" id="step-completed">
-                    <div class="step-num">05</div>
-                    <div class="step-label">Completed</div>
-                </div>
-            </div>
-
-            <!-- Live Output Display -->
-            <div class="output-container" id="output-container">
-                <div class="empty-state">
-                    <div class="empty-icon">🎯</div>
-                    <h3>Ready for Autonomous Execution</h3>
-                    <p>Enter an objective on the left or run the deterministic example to watch SUPRA decompose, synthesize, verify, and complete a multi-stage cycle.</p>
-                </div>
-            </div>
-
-            <!-- Action Bar (Export) -->
-            <div class="export-bar" id="export-bar" style="display: none;">
-                <div style="display: flex; gap: 0.5rem;">
-                    <button class="btn btn-secondary" onclick="handleExportDossier()">
-                        <span>📄 EXPORT MARKDOWN</span>
-                    </button>
-                    <button class="btn btn-secondary" onclick="handleExportHtmlDossier()">
-                        <span>🌐 EXPORT HTML + SVG</span>
-                    </button>
-                </div>
-                <div class="audit-hash-chip">
-                    <span class="label">SHA-256:</span>
-                    <span class="hash mono-text" id="final-audit-hash"></span>
-                </div>
-            </div>
-        </section>
+      <section id="view-decomposition" class="view detail-view"><div class="detail-host" data-clone="decomposition"></div></section>
+      <section id="view-strategies" class="view detail-view"><div class="detail-host" data-clone="strategies"></div></section>
+      <section id="view-verification" class="view detail-view"><div class="detail-host" data-clone="verification"></div></section>
+      <section id="view-sandbox" class="view detail-view"><div class="panel detail-card"><div class="panel-head"><div><span class="panel-icon">△</span> Sandbox</div></div><div id="sandbox-detail" class="detail-content empty-panel">Sin ejecución de sandbox.</div></div></section>
+      <section id="view-evidence" class="view detail-view"><div class="detail-host" data-clone="evidence"></div></section>
+      <section id="view-dossiers" class="view detail-view">
+        <div class="panel detail-card">
+          <div class="panel-head"><div><span class="panel-icon">▣</span> Dossiers</div></div>
+          <p class="detail-copy">Exporta únicamente la evidencia que SUPRA tenga persistida para el proyecto actual.</p>
+          <div class="export-actions"><button id="export-md" class="btn btn-secondary" disabled>Exportar Markdown</button><button id="export-html" class="btn btn-primary" disabled>Abrir HTML + SVG</button></div>
+          <div class="hash-card"><small>SHA-256 del deliverable</small><code id="audit-hash">N/A</code></div>
+        </div>
+      </section>
+      <section id="view-providers" class="view detail-view"><div class="panel detail-card"><div class="panel-head"><div><span class="panel-icon">◈</span> Proveedores</div><button id="refresh-providers" class="btn btn-compact">Actualizar</button></div><div id="providers-grid" class="provider-grid empty-panel">Cargando proveedores…</div></div></section>
+      <section id="view-projects" class="view detail-view"><div class="panel detail-card"><div class="panel-head"><div><span class="panel-icon">☷</span> Proyectos</div><button id="refresh-projects" class="btn btn-compact">Actualizar</button></div><div id="projects-grid" class="projects-grid empty-panel">Cargando proyectos…</div></div></section>
     </main>
+  </div>
 
-    <script src="/static/canvas.js?v=2.5"></script>
-    <script src="/static/app.js?v=2.5"></script>
+  <footer class="statusbar">
+    <span>SUPRA v1.0.0</span><span>Causal Intelligence Workbench</span><span id="footer-connection" class="footer-online">● API</span><span class="push"></span><span id="footer-summary">0 estrategias · 0 checkpoints</span>
+  </footer>
+
+  <script src="/static/canvas.js?v=3.0"></script>
+  <script src="/static/app.js?v=3.0"></script>
 </body>
 </html>
