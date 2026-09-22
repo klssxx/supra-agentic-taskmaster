@@ -398,7 +398,7 @@ def test_completion_gate_requires_current_isolated_sandbox_pass() -> None:
             ),
         )
 
-        with pytest.raises(CompletionGateError, match="secure sandbox"):
+        with pytest.raises(CompletionGateError, match="sandbox isolation smoke"):
             sm.complete_project(p.project_id, {"workflow_status": "COMPLETED"})
 
         blocked = sm.get_project(p.project_id)
