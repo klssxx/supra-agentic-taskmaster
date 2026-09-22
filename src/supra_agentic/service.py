@@ -414,7 +414,11 @@ async def mcp_jsonrpc_endpoint(request: Request) -> dict[str, Any]:
 @app.get("/api/v1/export/dossier/{project_id}", tags=["Export"])
 def export_technical_dossier(project_id: str) -> dict[str, Any]:
     """Export a markdown technical dossier of the completed project."""
-    posture = state_manager.get_project(project_id)
+    try:
+        validate_project_id(project_id)
+        posture = state_manager.get_project(project_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid project ID.") from exc
     if not posture:
         raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found.")
 
@@ -487,7 +491,11 @@ def export_technical_dossier(project_id: str) -> dict[str, Any]:
 @app.get("/api/v1/export/dossier/html/{project_id}", response_class=HTMLResponse, tags=["Export"])
 def export_html_dossier_route(project_id: str) -> HTMLResponse:
     """Export a self-contained HTML specification with embedded SVG architecture."""
-    posture = state_manager.get_project(project_id)
+    try:
+        validate_project_id(project_id)
+        posture = state_manager.get_project(project_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid project ID.") from exc
     if not posture:
         raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found.")
     html_content = export_full_html_dossier(posture)
