@@ -240,7 +240,7 @@ jobs:
           docker rm supra-test
           exit 1
 
-  sandbox-e2e:
+  sandbox_e2e:
     name: secure sandbox E2E
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -273,7 +273,7 @@ jobs:
 
   ci-result:
     name: ci-result
-    needs: [astra-canon, quality, lint-types, dependency-audit, secret-scan, repository-scan, package, docker, sandbox-e2e]
+    needs: [astra-canon, quality, lint-types, dependency-audit, secret-scan, repository-scan, package, docker, sandbox_e2e]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     env:
@@ -285,7 +285,7 @@ jobs:
       REPOSITORY_SCAN_RESULT: ${{ needs.repository-scan.result }}
       PACKAGE_RESULT: ${{ needs.package.result }}
       DOCKER_RESULT: ${{ needs.docker.result }}
-      SANDBOX_E2E_RESULT: ${{ needs.sandbox-e2e.result }}
+      SANDBOX_E2E_RESULT: ${{ needs.sandbox_e2e.result }}
     steps:
       - name: Enforce every required check
         shell: bash
