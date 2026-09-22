@@ -117,7 +117,10 @@ def test_full_tool_cycle_execution(monkeypatch: pytest.MonkeyPatch):
             assert r6["stage"] == TaskmasterStage.COMPLETED.value
             assert "audit_sha256" in r6["final_deliverable"]
             assert len(r6["final_deliverable"]["audit_sha256"]) == 64
-            assert r6["final_deliverable"]["secure_sandbox_status"] == "IDENTITY_BOUND_ISOLATION_PASS"
+            assert (
+                r6["final_deliverable"]["secure_sandbox_status"]
+                == "IDENTITY_BOUND_ISOLATION_PASS"
+            )
             assert (
                 r6["final_deliverable"]["secure_sandbox_execution_scope"]
                 == "IDENTITY_BOUNDARY_SMOKE_ONLY"
