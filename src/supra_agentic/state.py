@@ -40,9 +40,7 @@ class CompletionGateError(RuntimeError):
 def validate_project_id(project_id: str) -> str:
     """Validate the storage identity before any filesystem path is constructed."""
     if not isinstance(project_id, str) or not PROJECT_ID_RE.fullmatch(project_id):
-        raise ValueError(
-            "project_id must match ^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
-        )
+        raise ValueError("project_id must match ^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
     return project_id
 
 
@@ -331,7 +329,9 @@ class ProjectStateManager:
                     try:
                         self.get_project(pid)
                     except ValueError:
-                        logger.warning("Ignoring invalid persisted project filename: %s", p_file.name)
+                        logger.warning(
+                            "Ignoring invalid persisted project filename: %s", p_file.name
+                        )
             items = list(self._projects.values())
             items.sort(key=lambda x: x.updated_at, reverse=True)
             return items[:limit]
