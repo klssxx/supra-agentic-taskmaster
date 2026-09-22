@@ -58,7 +58,6 @@ def test_astra_033_integrity_hash_is_not_described_as_truth():
     assert "it is not evidence that the payload is true" in readme
 
 
-
 def test_frontend_escapes_dynamic_html_and_project_ids() -> None:
     app = _read("src/supra_agentic/web/app.js")
     assert "function escapeHtml(value)" in app
