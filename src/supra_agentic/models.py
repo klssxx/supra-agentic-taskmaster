@@ -12,6 +12,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 RESTRICTED_EXECUTION_SEMANTICS_VERSION = 2
+SECURE_SANDBOX_SEMANTICS_VERSION = 1
 
 
 class TaskmasterStage(str, Enum):
@@ -21,6 +22,7 @@ class TaskmasterStage(str, Enum):
     STRUCTURED = "STRUCTURED"
     STRATIFIED = "STRATIFIED"
     RESTRICTED_EXECUTION_VERIFIED = "RESTRICTED_EXECUTION_VERIFIED"
+    SECURE_SANDBOX_VERIFIED = "SECURE_SANDBOX_VERIFIED"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
 
@@ -163,6 +165,80 @@ class RestrictedExecutionResult(BaseModel):
         )
         self.identity_bound = bool(
             complete and self.execution_semantics_version == RESTRICTED_EXECUTION_SEMANTICS_VERSION
+        )
+        return self
+
+
+class SecureSandboxResult(BaseModel):
+    """Receipt from an externally isolated container execution.
+
+    The receipt establishes configured isolation controls and execution outcome.
+    It does not claim scientific validation or perfect security against kernel/
+    runtime vulnerabilities.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    execution_id: str = Field(default_factory=lambda: f"sbx-{uuid.uuid4().hex[:8]}")
+    execution_semantics_version: int = SECURE_SANDBOX_SEMANTICS_VERSION
+    candidate_id: str | None = None
+    mechanism_version: str | None = None
+    claim_id: str | None = None
+    protocol_version: str | None = None
+    backend: Literal["docker"] = "docker"
+    image: str
+    action_type: Literal["SECURE_CONTAINER_PYTHON"] = "SECURE_CONTAINER_PYTHON"
+    passed: bool
+    observed_result: Literal["PASS", "FAIL", "UNKNOWN"]
+    exit_code: int | None = None
+    output_log: str = ""
+    error_type: str | None = None
+    duration_ms: float = Field(ge=0.0)
+    timed_out: bool = False
+    network_isolated: bool = False
+    read_only_root: bool = False
+    capabilities_dropped: bool = False
+    no_new_privileges: bool = False
+    non_root_user: bool = False
+    resource_limits_applied: bool = False
+    identity_bound: bool = False
+    isolation_verified: bool = False
+    security_scope: Literal["CONTAINER_ISOLATION_CONTROLS_ONLY"] = (
+        "CONTAINER_ISOLATION_CONTROLS_ONLY"
+    )
+    scientific_validation: bool = False
+    timestamp: float = Field(default_factory=time.time)
+
+    @field_validator("scientific_validation")
+    @classmethod
+    def reject_scientific_validation_claim(cls, value: bool) -> bool:
+        if value:
+            raise ValueError("sandbox execution cannot claim scientific validation")
+        return value
+
+    @model_validator(mode="after")
+    def derive_security_and_identity(self) -> "SecureSandboxResult":
+        identity_complete = all(
+            isinstance(value, str) and bool(value.strip())
+            for value in (
+                self.candidate_id,
+                self.mechanism_version,
+                self.claim_id,
+                self.protocol_version,
+                self.execution_id,
+            )
+        )
+        self.identity_bound = bool(
+            identity_complete
+            and self.execution_semantics_version == SECURE_SANDBOX_SEMANTICS_VERSION
+        )
+        self.isolation_verified = bool(
+            self.backend == "docker"
+            and self.network_isolated
+            and self.read_only_root
+            and self.capabilities_dropped
+            and self.no_new_privileges
+            and self.non_root_user
+            and self.resource_limits_applied
         )
         return self
 
@@ -361,6 +437,7 @@ class ProjectPosture(BaseModel):
     selected_candidate: StrategyCandidate | None = None
     verification: VerificationReport | None = None
     restricted_execution_results: list[RestrictedExecutionResult] = Field(default_factory=list)
+    secure_sandbox_results: list[SecureSandboxResult] = Field(default_factory=list)
     checkpoints: list[CheckpointRecord] = Field(default_factory=list)
     final_output: dict[str, Any] | None = None
     error_message: str | None = None
