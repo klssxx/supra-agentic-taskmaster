@@ -32,7 +32,8 @@ MCP_TOOLS_MANIFEST = [
         "name": "supra_quick_run",
         "description": (
             "Execute the gated Taskmaster workflow; completion is reported only "
-            "when verification, restricted preflight, and secure sandbox gates pass."
+            "when verification, restricted preflight, and the identity-bound "
+            "Docker isolation-smoke gate pass."
         ),
         "inputSchema": {
             "type": "object",
@@ -108,8 +109,9 @@ MCP_TOOLS_MANIFEST = [
     {
         "name": "supra_secure_sandbox",
         "description": (
-            "Run SUPRA's fixed completion protocol in the configured fail-closed "
-            "Docker sandbox. No remote source code is accepted."
+            "Run SUPRA's fixed identity-bound isolation smoke in the configured "
+            "fail-closed Docker sandbox. It does not execute the selected candidate "
+            "mechanism/action plan/hypothesis, and no remote source code is accepted."
         ),
         "inputSchema": {
             "type": "object",
@@ -266,6 +268,15 @@ def handle_mcp_jsonrpc_request(payload: Mapping[str, Any]) -> dict[str, Any]:
                         else "UNVERIFIED_ISOLATION"
                         if posture.secure_sandbox_results
                         else "NOT_RUN"
+                    ),
+                    "secure_sandbox_execution_scope": (
+                        posture.secure_sandbox_results[-1].execution_scope
+                        if posture.secure_sandbox_results
+                        else "NOT_RUN"
+                    ),
+                    "candidate_mechanism_executed_in_secure_sandbox": bool(
+                        posture.secure_sandbox_results
+                        and posture.secure_sandbox_results[-1].candidate_mechanism_executed
                     ),
                     "posture": posture.model_dump(),
                 }
