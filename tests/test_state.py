@@ -3,7 +3,6 @@
 import tempfile
 
 import pytest
-
 from supra_agentic.models import (
     RESTRICTED_EXECUTION_SEMANTICS_VERSION,
     RestrictedExecutionResult,
