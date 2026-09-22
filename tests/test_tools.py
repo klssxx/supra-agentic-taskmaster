@@ -101,7 +101,7 @@ def test_full_tool_cycle_execution(monkeypatch: pytest.MonkeyPatch):
         r5 = secure_sandbox_executor(pid)
         assert r5["status"] == "success"
         assert r5["stage"] == TaskmasterStage.SECURE_SANDBOX_VERIFIED.value
-        assert r5["secure_sandbox_status"] == "ISOLATED_BOUND_PASS"
+        assert r5["secure_sandbox_status"] == "IDENTITY_BOUND_ISOLATION_PASS"
 
         # 6. Checkpoint / Final Deliverable. Completion is a real three-gate contract.
         if report["verdict"] in {"PASS", "CONDITIONAL_PASS"}:
@@ -114,7 +114,7 @@ def test_full_tool_cycle_execution(monkeypatch: pytest.MonkeyPatch):
             assert r6["stage"] == TaskmasterStage.COMPLETED.value
             assert "audit_sha256" in r6["final_deliverable"]
             assert len(r6["final_deliverable"]["audit_sha256"]) == 64
-            assert r6["final_deliverable"]["secure_sandbox_status"] == "ISOLATED_BOUND_PASS"
+            assert r6["final_deliverable"]["secure_sandbox_status"] == "IDENTITY_BOUND_ISOLATION_PASS"
         else:
             with pytest.raises(CompletionGateError):
                 record_checkpoint(
