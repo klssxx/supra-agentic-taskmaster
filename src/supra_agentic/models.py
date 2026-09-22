@@ -310,7 +310,11 @@ class ProjectPosture(BaseModel):
             )
         return self
 
-    project_id: str
+    project_id: str = Field(
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$",
+    )
     objective: str
     stage: TaskmasterStage
     created_at: float
