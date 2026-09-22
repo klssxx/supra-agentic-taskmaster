@@ -8,15 +8,15 @@ restricted checks, and issuing auditable technical dossiers.
 
 SUPRA combines a deterministic gated workflow with an optional model
 boundary. The deterministic stages remain authoritative for state transitions,
-scoped coverage evaluation, trusted restricted preflight, externally isolated
-sandbox execution, and the SHA-256 payload-integrity ledger.
+scoped coverage evaluation, trusted restricted preflight, an identity-bound externally isolated
+sandbox smoke, and the SHA-256 payload-integrity ledger.
 
 1. **RECEIVED** — capture the objective and initialize an isolated project.
 2. **STRUCTURED** — separate invariants, mutable assumptions, and subtasks.
 3. **STRATIFIED** — produce Conservative, Orthogonal, and Disruptive pathways.
 4. **RESTRICTED_EXECUTION_VERIFIED** — the trusted internal preflight passed and is bound to the persisted selected candidate/protocol. This is in-process restricted execution, not a security sandbox or scientific validation.
-5. **SECURE_SANDBOX_VERIFIED** — the fixed completion protocol passed in an externally isolated Docker container with network disabled, read-only rootfs, dropped capabilities, no-new-privileges, non-root UID, and CPU/RAM/PID limits.
-6. **COMPLETED** — the workflow finished only after verification PASS/CONDITIONAL_PASS, current bound restricted preflight, and current isolated bound sandbox PASS. Completion still does **not** imply scientific validity or deployed-system safety.
+5. **SECURE_SANDBOX_VERIFIED** — an identity-bound isolation smoke passed in an externally isolated Docker container with network disabled, read-only rootfs, dropped capabilities, no-new-privileges, non-root UID, and CPU/RAM/PID limits. It does **not** execute the selected candidate mechanism, action plan, or hypothesis.
+6. **COMPLETED** — the workflow finished only after verification PASS/CONDITIONAL_PASS, current bound restricted preflight, and current identity-bound isolation-smoke PASS. Completion still does **not** imply candidate-mechanism execution, scientific validity, or deployed-system safety.
 
 The model is an interchangeable assistant, not a hidden requirement. The
 application can execute without a model provider and can optionally use
@@ -35,7 +35,7 @@ Provider-neutral Taskmaster facade ---- optional model provider
           v
 Deterministic stage runner
   decompose -> synthesize -> coverage-check -> restricted-preflight
-            -> secure-container-check -> checkpoint
+            -> identity-bound-isolation-smoke -> checkpoint
           |
           v
 Thread-safe state + JSON/Markdown/HTML dossier + SHA-256 ledger
@@ -149,8 +149,10 @@ same Uvicorn application and does not assume a hosting vendor or provider.
 - The Docker sandbox runs with `--network=none`, read-only rootfs, all
   capabilities dropped, `no-new-privileges=true`, UID/GID 65534, PID/RAM/CPU
   limits, no IPC namespace sharing, and a bounded timeout.
-- A restricted or sandbox PASS is scoped to its executed protocol; neither is
-  proof of deployed-system safety or scientific validation.
+- A restricted PASS is scoped to its executed internal protocol. A sandbox PASS
+  is scoped only to the identity-bound isolation smoke and does not execute the
+  selected candidate mechanism. Neither is proof of deployed-system safety or
+  scientific validation.
 - SHA-256 identifies serialized payload integrity relative to the hashed bytes;
   it is not evidence that the payload is true.
 
