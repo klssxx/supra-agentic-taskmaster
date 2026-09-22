@@ -35,6 +35,18 @@ def _secure_sandbox_status(posture: ProjectPosture) -> str:
     if latest:
         return "UNVERIFIED_ISOLATION"
     return "NOT_RUN"
+
+
+def _secure_sandbox_scope(posture: ProjectPosture) -> str:
+    latest = posture.secure_sandbox_results[-1] if posture.secure_sandbox_results else None
+    return latest.execution_scope if latest else "NOT_RUN"
+
+
+def _candidate_mechanism_executed_in_secure_sandbox(posture: ProjectPosture) -> bool:
+    latest = posture.secure_sandbox_results[-1] if posture.secure_sandbox_results else None
+    return bool(latest and latest.candidate_mechanism_executed)
+
+
 MAX_MCP_BODY_SIZE = 8 * 1024 * 1024
 
 
@@ -274,6 +286,10 @@ def create_and_run_project(req: CreateProjectRequest) -> dict[str, Any] | Respon
                 posture.verification.verdict if posture.verification else "NOT_EVALUATED"
             ),
             "secure_sandbox_status": _secure_sandbox_status(posture),
+            "secure_sandbox_execution_scope": _secure_sandbox_scope(posture),
+            "candidate_mechanism_executed_in_secure_sandbox": (
+                _candidate_mechanism_executed_in_secure_sandbox(posture)
+            ),
             "verification_scope": (
                 posture.verification.verification_scope
                 if posture.verification
@@ -380,6 +396,10 @@ def example_quick_run() -> dict[str, Any]:
             posture.verification.verdict if posture.verification else "NOT_EVALUATED"
         ),
         "secure_sandbox_status": _secure_sandbox_status(posture),
+        "secure_sandbox_execution_scope": _secure_sandbox_scope(posture),
+        "candidate_mechanism_executed_in_secure_sandbox": (
+            _candidate_mechanism_executed_in_secure_sandbox(posture)
+        ),
         "scientific_status": (
             (posture.final_output or {}).get("scientific_status", "NOT_VALIDATED")
         ),
