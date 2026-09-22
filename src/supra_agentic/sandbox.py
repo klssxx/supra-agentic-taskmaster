@@ -161,7 +161,7 @@ def run_python_in_secure_docker(
             "--network=none",
             "--read-only",
             "--cap-drop=ALL",
-            "--security-opt=no-new-privileges",
+            "--security-opt=no-new-privileges=true",
             "--user=65534:65534",
             f"--pids-limit={cfg.pids_limit}",
             f"--memory={cfg.memory_mb}m",
@@ -170,11 +170,11 @@ def run_python_in_secure_docker(
             "--ipc=none",
             "--tmpfs=/tmp:rw,noexec,nosuid,size=16m",
             "--mount",
-            f"type=bind,src={script},dst=/opt/supra/runner.py,readonly",
+            f"type=bind,src={script},dst=/runner.py,readonly",
             image_id,
             "python",
             "-I",
-            "/opt/supra/runner.py",
+            "/runner.py",
         ]
         try:
             result = subprocess.run(
