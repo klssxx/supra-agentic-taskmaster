@@ -10,6 +10,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from supra_agentic.anti_goodhart.observer import _observe_trace_after_gate
+from supra_agentic.anti_goodhart.store import ObserverStore
 from supra_agentic.anti_goodhart.trace import seal_public_posture, sealed_trace_record
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -284,3 +286,23 @@ def test_incomplete_worker_cannot_create_causal_interference_claim(
     assert report["reason"] == "local_probe_incomplete"
     assert report["rows"][0]["semantic_equal"] is False
     assert report["rows"][0]["perturbation_ok"] is False
+
+
+def test_g4_two_consecutive_decisions_ignore_persisted_observer_state(tmp_path: Path) -> None:
+    probe = _load_probe()
+    objective = "Design a bounded deterministic service"
+    d_root = tmp_path / "decisional"
+    observer_root = tmp_path / "observer"
+
+    first, _ = probe._run_d(objective, d_root, "g4-decision-1")
+    first_trace = seal_public_posture(first)
+    observed = _observe_trace_after_gate(
+        first_trace,
+        store=ObserverStore(observer_root),
+    )
+    assert observed.inserted_diagnostics >= 1
+    assert ObserverStore(observer_root).read_diagnostics()
+
+    second, _ = probe._run_d(objective, d_root, "g4-decision-2")
+
+    assert probe._normalized_public(first) == probe._normalized_public(second)
