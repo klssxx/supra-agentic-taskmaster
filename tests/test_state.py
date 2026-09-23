@@ -5,6 +5,7 @@ import tempfile
 import pytest
 
 from supra_agentic.models import (
+    ProjectPosture,
     RESTRICTED_EXECUTION_SEMANTICS_VERSION,
     SECURE_SANDBOX_SEMANTICS_VERSION,
     RestrictedExecutionResult,
@@ -44,6 +45,19 @@ def _secure_result(
         no_new_privileges=isolated,
         non_root_user=isolated,
         resource_limits_applied=isolated,
+    )
+
+
+def _verification_report(
+    candidate: StrategyCandidate,
+    **kwargs,
+) -> VerificationReport:
+    identity = candidate_execution_identity(candidate)
+    return VerificationReport(
+        candidate_id=candidate.candidate_id,
+        mechanism_version=identity["mechanism_version"],
+        claim_id=identity["claim_id"],
+        **kwargs,
     )
 
 
@@ -100,8 +114,8 @@ def test_project_lifecycle_transitions():
         assert len(p3.checkpoints) == 3
 
         # Stage 4: Verification
-        v_rep = VerificationReport(
-            candidate_id=cand1.candidate_id,
+        v_rep = _verification_report(
+            cand1,
             invariants_preserved=True,
             invariants_checked=["Memory safety", "Zero-leakage"],
             vulnerabilities_detected=[],
@@ -236,8 +250,8 @@ def test_completed_workflow_is_revoked_immediately_by_latest_restricted_failure(
 
         sm.record_verification(
             p.project_id,
-            VerificationReport(
-                candidate_id=selected.candidate_id,
+            _verification_report(
+                selected,
                 invariants_preserved=True,
                 invariants_checked=["bounded"],
                 vulnerabilities_detected=[],
@@ -282,8 +296,8 @@ def test_completion_gate_rejects_failed_or_missing_verification(verdict: str) ->
         identity = candidate_execution_identity(selected)
         sm.record_verification(
             p.project_id,
-            VerificationReport(
-                candidate_id=selected.candidate_id,
+            _verification_report(
+                selected,
                 invariants_preserved=False,
                 invariants_checked=["bounded"],
                 vulnerabilities_detected=["bounded"],
@@ -335,8 +349,8 @@ def test_completion_gate_requires_current_bound_execution_pass() -> None:
         assert selected is not None
         sm.record_verification(
             p.project_id,
-            VerificationReport(
-                candidate_id=selected.candidate_id,
+            _verification_report(
+                selected,
                 invariants_preserved=True,
                 invariants_checked=["bounded"],
                 vulnerabilities_detected=[],
@@ -373,8 +387,8 @@ def test_completion_gate_requires_current_isolated_sandbox_pass() -> None:
         identity = candidate_execution_identity(selected)
         sm.record_verification(
             p.project_id,
-            VerificationReport(
-                candidate_id=selected.candidate_id,
+            _verification_report(
+                selected,
                 invariants_preserved=True,
                 invariants_checked=["bounded"],
                 vulnerabilities_detected=[],
@@ -431,8 +445,8 @@ def test_non_isolated_sandbox_receipt_cannot_satisfy_completion_gate() -> None:
         identity = candidate_execution_identity(selected)
         sm.record_verification(
             p.project_id,
-            VerificationReport(
-                candidate_id=selected.candidate_id,
+            _verification_report(
+                selected,
                 invariants_preserved=True,
                 confidence_score=1.0,
                 verdict="PASS",
@@ -457,6 +471,126 @@ def test_non_isolated_sandbox_receipt_cannot_satisfy_completion_gate() -> None:
         sm.record_secure_sandbox_execution(p.project_id, receipt)
         with pytest.raises(CompletionGateError):
             sm.complete_project(p.project_id, {"workflow_status": "COMPLETED"})
+
+
+def test_candidate_mechanism_revision_cannot_reuse_prior_completion_evidence() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        sm = ProjectStateManager(storage_dir=tmpdir)
+        p = sm.create_project(objective="mechanism revision binding")
+        original = StrategyCandidate(
+            candidate_id="cand-stable",
+            pathway_name="Path",
+            paradigm_type="ORTHOGONAL",
+            hypothesis="Original hypothesis",
+            action_plan=["original step"],
+            divergence_score=0.5,
+            feasibility_score=0.5,
+        )
+        posture = sm.add_candidates(p.project_id, [original], select_best=True)
+        selected = posture.selected_candidate
+        assert selected is not None
+        original_identity = candidate_execution_identity(selected)
+
+        sm.record_verification(
+            p.project_id,
+            _verification_report(
+                selected,
+                invariants_preserved=True,
+                invariants_checked=["bounded"],
+                confidence_score=1.0,
+                verdict="PASS",
+            ),
+        )
+        sm.record_restricted_execution(
+            p.project_id,
+            RestrictedExecutionResult(
+                candidate_id=original_identity["candidate_id"],
+                mechanism_version=original_identity["mechanism_version"],
+                claim_id=original_identity["claim_id"],
+                protocol_version="sha256:test-protocol",
+                execution_semantics_version=RESTRICTED_EXECUTION_SEMANTICS_VERSION,
+                action_type="RESTRICTED_CODE_RUN",
+                passed=True,
+                output_log="pass",
+                duration_ms=1.0,
+            ),
+        )
+        sm.record_secure_sandbox_execution(
+            p.project_id,
+            _secure_result(original_identity),
+        )
+
+        revised = StrategyCandidate(
+            candidate_id=original.candidate_id,
+            pathway_name=original.pathway_name,
+            paradigm_type=original.paradigm_type,
+            hypothesis="Revised hypothesis",
+            action_plan=["revised step"],
+            divergence_score=0.5,
+            feasibility_score=0.5,
+        )
+        revised_posture = sm.add_candidates(
+            p.project_id,
+            [revised],
+            select_best=True,
+        )
+        assert revised_posture.selected_candidate is not None
+        revised_identity = candidate_execution_identity(
+            revised_posture.selected_candidate
+        )
+        assert revised_identity["candidate_id"] == original_identity["candidate_id"]
+        assert revised_identity["mechanism_version"] != original_identity["mechanism_version"]
+        assert revised_posture.verification is None
+
+        sm.record_verification(
+            p.project_id,
+            _verification_report(
+                revised_posture.selected_candidate,
+                invariants_preserved=True,
+                invariants_checked=["bounded"],
+                confidence_score=1.0,
+                verdict="PASS",
+            ),
+        )
+        with pytest.raises(CompletionGateError):
+            sm.complete_project(p.project_id, {"workflow_status": "COMPLETED"})
+
+        restricted = sm.record_restricted_execution(
+            p.project_id,
+            RestrictedExecutionResult(
+                candidate_id=revised_identity["candidate_id"],
+                mechanism_version=revised_identity["mechanism_version"],
+                claim_id=revised_identity["claim_id"],
+                protocol_version="sha256:test-protocol-2",
+                execution_semantics_version=RESTRICTED_EXECUTION_SEMANTICS_VERSION,
+                action_type="RESTRICTED_CODE_RUN",
+                passed=True,
+                output_log="pass revised",
+                duration_ms=1.0,
+            ),
+        )
+        assert restricted.stage == TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED
+        secure = sm.record_secure_sandbox_execution(
+            p.project_id,
+            _secure_result(revised_identity),
+        )
+        assert secure.stage == TaskmasterStage.SECURE_SANDBOX_VERIFIED
+        completed = sm.complete_project(
+            p.project_id,
+            {"workflow_status": "COMPLETED"},
+        )
+        assert completed.stage == TaskmasterStage.COMPLETED
+
+        legacy_payload = completed.model_dump()
+        verification_payload = legacy_payload["verification"]
+        assert isinstance(verification_payload, dict)
+        verification_payload.pop("mechanism_version", None)
+        verification_payload.pop("claim_id", None)
+        reloaded = ProjectPosture.model_validate(legacy_payload)
+        assert reloaded.stage == TaskmasterStage.SECURE_SANDBOX_VERIFIED
+        assert reloaded.final_output is not None
+        assert reloaded.final_output["workflow_status"] == "BLOCKED"
+        assert reloaded.final_output["completion_status"] == "BLOCKED"
 
 
 @pytest.mark.parametrize(
