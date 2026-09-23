@@ -5,8 +5,8 @@ import tempfile
 import pytest
 
 from supra_agentic.models import (
-    RESTRICTED_EXECUTION_SEMANTICS_VERSION,
     ProjectPosture,
+    RESTRICTED_EXECUTION_SEMANTICS_VERSION,
     SECURE_SANDBOX_SEMANTICS_VERSION,
     RestrictedExecutionResult,
     SecureSandboxResult,
