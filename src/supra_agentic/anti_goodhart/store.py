@@ -17,6 +17,10 @@ _DIAGNOSTIC_STATUSES = {"OBSERVED", "UNKNOWN", "NOT_EVALUATED", "CONFLICT"}
 _PROCESS_LOCK_RETRY_SECONDS = 0.01
 
 
+class ObserverStoreCorruptionError(RuntimeError):
+    """Raised when persisted observer evidence is not valid appendable JSONL."""
+
+
 @contextmanager
 def _interprocess_file_lock(path: Path) -> Iterator[None]:
     """Serialize store mutations across independent observer processes."""
@@ -70,17 +74,47 @@ class ObserverStore:
     def failures_path(self) -> Path:
         return self.root / "observer_failures.jsonl"
 
-    def _read_records(self, path: Path) -> list[dict[str, Any]]:
+    def _read_records(
+        self,
+        path: Path,
+        *,
+        validate_diagnostics: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Read JSONL strictly so corruption cannot masquerade as missing evidence."""
         if not path.exists():
             return []
+        raw = path.read_bytes()
+        if not raw:
+            return []
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ObserverStoreCorruptionError(
+                f"{path.name} contains invalid UTF-8"
+            ) from exc
+
         records: list[dict[str, Any]] = []
-        for line in path.read_text(encoding="utf-8").splitlines():
+        for line_number, line in enumerate(text.splitlines(), start=1):
+            if not line.strip():
+                raise ObserverStoreCorruptionError(
+                    f"{path.name} contains an empty JSONL record at line {line_number}"
+                )
             try:
                 decoded = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(decoded, dict):
-                records.append(cast(dict[str, Any], decoded))
+            except json.JSONDecodeError as exc:
+                raise ObserverStoreCorruptionError(
+                    f"{path.name} contains invalid JSON at line {line_number}"
+                ) from exc
+            if not isinstance(decoded, dict):
+                raise ObserverStoreCorruptionError(
+                    f"{path.name} contains a non-object record at line {line_number}"
+                )
+            item = cast(dict[str, Any], decoded)
+            if validate_diagnostics and self._validated_diagnostic(item) is None:
+                raise ObserverStoreCorruptionError(
+                    f"{path.name} contains an invalid diagnostic at line {line_number}"
+                )
+            records.append(item)
         return records
 
     @staticmethod
@@ -118,43 +152,56 @@ class ObserverStore:
         return diagnostic
 
     def read_diagnostics(self) -> list[dict[str, Any]]:
-        return [
-            item
-            for item in self._read_records(self.diagnostics_path)
-            if self._validated_diagnostic(item) is not None
-        ]
+        records = self._read_records(self.diagnostics_path, validate_diagnostics=True)
+        seen: set[str] = set()
+        for item in records:
+            diagnostic_id = str(item["diagnostic_id"])
+            if diagnostic_id in seen:
+                raise ObserverStoreCorruptionError(
+                    f"{self.diagnostics_path.name} contains duplicate diagnostic_id"
+                )
+            seen.add(diagnostic_id)
+        return records
 
     def read_failures(self) -> list[dict[str, Any]]:
         return self._read_records(self.failures_path)
 
+    @staticmethod
+    def _append_jsonl(path: Path, record: dict[str, Any]) -> None:
+        """Append one record without ever concatenating onto an existing JSON object."""
+        needs_separator = False
+        if path.exists() and path.stat().st_size:
+            with path.open("rb") as existing:
+                existing.seek(-1, os.SEEK_END)
+                needs_separator = existing.read(1) != b"\n"
+        with path.open("a", encoding="utf-8", newline="\n") as handle:
+            if needs_separator:
+                handle.write("\n")
+            handle.write(
+                json.dumps(
+                    record,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                )
+                + "\n"
+            )
+
     def append_diagnostic(self, diagnostic: Diagnostic) -> bool:
         with self._lock, _interprocess_file_lock(self.lock_path):
-            existing = {str(item.get("diagnostic_id") or "") for item in self.read_diagnostics()}
+            existing = {
+                str(item.get("diagnostic_id") or "") for item in self.read_diagnostics()
+            }
             if diagnostic.diagnostic_id in existing:
                 return False
             self.root.mkdir(parents=True, exist_ok=True)
-            with self.diagnostics_path.open("a", encoding="utf-8") as handle:
-                handle.write(
-                    json.dumps(
-                        diagnostic.to_record(),
-                        ensure_ascii=False,
-                        sort_keys=True,
-                        separators=(",", ":"),
-                    )
-                    + "\n"
-                )
+            self._append_jsonl(self.diagnostics_path, diagnostic.to_record())
             return True
 
     def append_failure(self, failure: ObserverFailure) -> None:
         with self._lock, _interprocess_file_lock(self.lock_path):
+            # Validate existing framing before mutation; never worsen a corrupt ledger.
+            self.read_failures()
             self.root.mkdir(parents=True, exist_ok=True)
-            with self.failures_path.open("a", encoding="utf-8") as handle:
-                handle.write(
-                    json.dumps(
-                        failure.to_record(),
-                        ensure_ascii=False,
-                        sort_keys=True,
-                        separators=(",", ":"),
-                    )
-                    + "\n"
-                )
+            self._append_jsonl(self.failures_path, failure.to_record())

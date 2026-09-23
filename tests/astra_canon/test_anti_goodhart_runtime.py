@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 import pytest
+
 from supra_agentic.anti_goodhart.detectors import (
     DetectorSpec,
     execution_record_consistency,
@@ -25,7 +26,10 @@ from supra_agentic.anti_goodhart.gate import (
 )
 from supra_agentic.anti_goodhart.observer import _observe_trace_after_gate, observe_trace
 from supra_agentic.anti_goodhart.records import Diagnostic
-from supra_agentic.anti_goodhart.store import ObserverStore
+from supra_agentic.anti_goodhart.store import (
+    ObserverStore,
+    ObserverStoreCorruptionError,
+)
 from supra_agentic.anti_goodhart.trace import (
     load_sealed_trace,
     project_public_posture,
@@ -350,17 +354,20 @@ def test_sealed_trace_rejects_forged_source_identity() -> None:
         load_sealed_trace(record)
 
 
-def test_tampered_parseable_record_cannot_suppress_valid_diagnostic(tmp_path: Path) -> None:
-    trace = seal_public_posture(_posture())
-    diagnostic = Diagnostic(
-        detector_id="poison-sentinel",
+def _store_diagnostic(message: str = "canonical diagnostic") -> Diagnostic:
+    return Diagnostic(
+        detector_id="store-sentinel",
         detector_version="1",
-        trace_sha256=trace.payload_sha256,
+        trace_sha256="a" * 64,
         kind="integrity",
         status="OBSERVED",
-        message="canonical diagnostic",
+        message=message,
         details={"value": 1},
     )
+
+
+def test_corrupt_semantic_record_fails_closed_without_mutation(tmp_path: Path) -> None:
+    diagnostic = _store_diagnostic()
     store = ObserverStore(tmp_path / "observer")
     store.root.mkdir(parents=True, exist_ok=True)
     tampered = diagnostic.to_record()
@@ -369,15 +376,17 @@ def test_tampered_parseable_record_cannot_suppress_valid_diagnostic(tmp_path: Pa
         json.dumps(tampered, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+    before = store.diagnostics_path.read_bytes()
 
-    assert store.append_diagnostic(diagnostic) is True
-    canonical = [
-        item for item in store.read_diagnostics() if item.get("message") == "canonical diagnostic"
-    ]
-    assert len(canonical) == 1
+    with pytest.raises(ObserverStoreCorruptionError, match="invalid diagnostic"):
+        store.read_diagnostics()
+    with pytest.raises(ObserverStoreCorruptionError, match="invalid diagnostic"):
+        store.append_diagnostic(diagnostic)
+
+    assert store.diagnostics_path.read_bytes() == before
 
 
-def test_store_ignores_parseable_nonfinite_diagnostic_record(tmp_path: Path) -> None:
+def test_store_rejects_parseable_nonfinite_diagnostic_record(tmp_path: Path) -> None:
     store = ObserverStore(tmp_path / "observer")
     store.root.mkdir(parents=True, exist_ok=True)
     poisoned = {
@@ -390,9 +399,63 @@ def test_store_ignores_parseable_nonfinite_diagnostic_record(tmp_path: Path) -> 
         "message": "parseable non-finite record",
         "details": {"value": math.nan},
     }
-    store.diagnostics_path.write_text(json.dumps(poisoned), encoding="utf-8")
+    store.diagnostics_path.write_text(json.dumps(poisoned) + "\n", encoding="utf-8")
+    before = store.diagnostics_path.read_bytes()
 
-    assert store.read_diagnostics() == []
+    with pytest.raises(ObserverStoreCorruptionError, match="invalid diagnostic"):
+        store.read_diagnostics()
+    with pytest.raises(ObserverStoreCorruptionError, match="invalid diagnostic"):
+        store.append_diagnostic(_store_diagnostic())
+
+    assert store.diagnostics_path.read_bytes() == before
+
+
+def test_store_rejects_truncated_tail_without_worsening_file(tmp_path: Path) -> None:
+    store = ObserverStore(tmp_path / "observer")
+    store.root.mkdir(parents=True, exist_ok=True)
+    store.diagnostics_path.write_bytes(b'{"diagnostic_id":"truncated"')
+    before = store.diagnostics_path.read_bytes()
+
+    with pytest.raises(ObserverStoreCorruptionError, match="invalid JSON"):
+        store.append_diagnostic(_store_diagnostic())
+
+    assert store.diagnostics_path.read_bytes() == before
+
+
+def test_store_repairs_valid_tail_separator_before_append(tmp_path: Path) -> None:
+    store = ObserverStore(tmp_path / "observer")
+    store.root.mkdir(parents=True, exist_ok=True)
+    first = _store_diagnostic("first")
+    second = _store_diagnostic("second")
+    store.diagnostics_path.write_text(
+        json.dumps(first.to_record(), sort_keys=True),
+        encoding="utf-8",
+    )
+
+    assert store.append_diagnostic(second) is True
+    raw = store.diagnostics_path.read_bytes()
+    assert raw.endswith(b"\n")
+    assert len(raw.splitlines()) == 2
+    assert [item["diagnostic_id"] for item in store.read_diagnostics()] == [
+        first.diagnostic_id,
+        second.diagnostic_id,
+    ]
+
+
+def test_store_rejects_duplicate_historical_diagnostic_ids(tmp_path: Path) -> None:
+    store = ObserverStore(tmp_path / "observer")
+    store.root.mkdir(parents=True, exist_ok=True)
+    diagnostic = _store_diagnostic("duplicate")
+    encoded = json.dumps(diagnostic.to_record(), sort_keys=True)
+    store.diagnostics_path.write_text(encoded + "\n" + encoded + "\n", encoding="utf-8")
+    before = store.diagnostics_path.read_bytes()
+
+    with pytest.raises(ObserverStoreCorruptionError, match="duplicate diagnostic_id"):
+        store.read_diagnostics()
+    with pytest.raises(ObserverStoreCorruptionError, match="duplicate diagnostic_id"):
+        store.append_diagnostic(diagnostic)
+
+    assert store.diagnostics_path.read_bytes() == before
 
 
 @pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf])
