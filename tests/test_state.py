@@ -554,7 +554,7 @@ def test_candidate_mechanism_revision_cannot_reuse_prior_completion_evidence() -
         with pytest.raises(CompletionGateError):
             sm.complete_project(p.project_id, {"workflow_status": "COMPLETED"})
 
-        sm.record_restricted_execution(
+        restricted = sm.record_restricted_execution(
             p.project_id,
             RestrictedExecutionResult(
                 candidate_id=revised_identity["candidate_id"],
@@ -568,10 +568,12 @@ def test_candidate_mechanism_revision_cannot_reuse_prior_completion_evidence() -
                 duration_ms=1.0,
             ),
         )
-        sm.record_secure_sandbox_execution(
+        assert restricted.stage == TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED
+        secure = sm.record_secure_sandbox_execution(
             p.project_id,
             _secure_result(revised_identity),
         )
+        assert secure.stage == TaskmasterStage.SECURE_SANDBOX_VERIFIED
         completed = sm.complete_project(
             p.project_id,
             {"workflow_status": "COMPLETED"},

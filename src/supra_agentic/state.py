@@ -297,7 +297,7 @@ class ProjectStateManager:
             sandbox_gate = bool(
                 latest_sandbox
                 and latest_sandbox.passed
-                and latest_sandbox.identity_bound
+                and _sandbox_matches_identity(latest_sandbox, expected)
                 and latest_sandbox.isolation_verified
             )
             restricted_gate = bool(result.passed and identity_matches)
@@ -389,7 +389,7 @@ class ProjectStateManager:
             restricted_gate = bool(
                 latest_restricted
                 and latest_restricted.passed
-                and latest_restricted.identity_bound
+                and _restricted_matches_identity(latest_restricted, expected)
             )
 
             if p.stage is not TaskmasterStage.FAILED:
