@@ -46,13 +46,14 @@ def test_cors_absent_is_closed() -> None:
     assert service._parse_cors_origins("") == []
 
 
-def test_cors_accepts_one_multiple_and_explicit_wildcard() -> None:
+def test_cors_accepts_explicit_origins_and_rejects_wildcard() -> None:
     assert service._parse_cors_origins("https://one.example") == ["https://one.example"]
     assert service._parse_cors_origins("https://one.example, http://localhost:3000") == [
         "https://one.example",
         "http://localhost:3000",
     ]
-    assert service._parse_cors_origins("*") == ["*"]
+    with pytest.raises(RuntimeError, match="wildcard"):
+        service._parse_cors_origins("*")
 
 
 @pytest.mark.parametrize("raw", ["one.example", "ftp://one.example", "https://ok.example,"])

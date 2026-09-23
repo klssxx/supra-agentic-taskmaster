@@ -4,6 +4,12 @@
 
 let currentProjectId = null;
 
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[ch]);
+}
+
 async function handleRunTask(event) {
     event.preventDefault();
     const objective = document.getElementById('objective-input').value.trim();
@@ -110,15 +116,15 @@ function renderProjectPosture(posture) {
         <div class="result-section">
             <h4>01. Deconstructed Invariants & Mutable Assumptions</h4>
             <div style="font-size: 0.85rem; margin-bottom: 0.5rem;">
-                <strong>Domain:</strong> <span class="mono-text">${decomp ? decomp.domain : 'general'}</span> | 
-                <strong>Objective:</strong> ${posture.objective}
+                <strong>Domain:</strong> <span class="mono-text">${escapeHtml(decomp ? decomp.domain : 'general')}</span> | 
+                <strong>Objective:</strong> ${escapeHtml(posture.objective)}
             </div>
             <div class="invariants-grid">
                 ${decomp ? decomp.invariants.map(inv => `
-                    <div style="font-size: 0.8rem; color: #10B981;">&check; [INVARIANT] ${inv}</div>
+                    <div style="font-size: 0.8rem; color: #10B981;">&check; [INVARIANT] ${escapeHtml(inv)}</div>
                 `).join('') : ''}
                 ${decomp ? decomp.mutable_assumptions.map(mut => `
-                    <div style="font-size: 0.8rem; color: #94A3B8;">&bull; [MUTABLE ASSUMPTION CHALLENGED] <span style="text-decoration: line-through;">${mut}</span></div>
+                    <div style="font-size: 0.8rem; color: #94A3B8;">&bull; [MUTABLE ASSUMPTION CHALLENGED] <span style="text-decoration: line-through;">${escapeHtml(mut)}</span></div>
                 `).join('') : ''}
             </div>
         </div>
@@ -129,10 +135,10 @@ function renderProjectPosture(posture) {
                 ${posture.candidates ? posture.candidates.map(c => `
                     <div class="candidate-card ${c.is_selected ? 'selected' : ''}">
                         <div class="candidate-header">
-                            <span>${c.pathway_name}</span>
-                            <span class="badge ${c.is_selected ? 'badge-primary' : ''}">${c.paradigm_type}</span>
+                            <span>${escapeHtml(c.pathway_name)}</span>
+                            <span class="badge ${c.is_selected ? 'badge-primary' : ''}">${escapeHtml(c.paradigm_type)}</span>
                         </div>
-                        <p style="font-size: 0.8rem; color: #94A3B8; margin-bottom: 0.35rem;">${c.hypothesis}</p>
+                        <p style="font-size: 0.8rem; color: #94A3B8; margin-bottom: 0.35rem;">${escapeHtml(c.hypothesis)}</p>
                         <div class="candidate-meta mono-text">
                             Feasibility: ${(c.feasibility_score * 100).toFixed(0)}% | Divergence: ${(c.divergence_score * 100).toFixed(0)}%
                         </div>
@@ -144,16 +150,16 @@ function renderProjectPosture(posture) {
         <div class="result-section">
             <h4>03. Strategy Coverage & Restricted Execution Telemetry</h4>
             <div style="font-size: 0.85rem;">
-                <strong>Coverage Verdict:</strong> <span style="font-weight: 700;">${ver ? ver.verdict : 'NOT_EVALUATED'}</span>
+                <strong>Coverage Verdict:</strong> <span style="font-weight: 700;">${escapeHtml(ver ? ver.verdict : 'NOT_EVALUATED')}</span>
                 (Coverage fraction: ${ver ? (ver.confidence_score * 100).toFixed(1) + '%' : 'N/A'})
             </div>
             <div style="font-size: 0.8rem; color: #94A3B8; margin-top: 0.25rem;">
-                ${ver ? ver.rationale : 'No strategy-coverage evaluation is available.'}
+                ${escapeHtml(ver ? ver.rationale : 'No strategy-coverage evaluation is available.')}
             </div>
             ${rex ? `
                 <div style="background: #000; padding: 0.5rem; border-radius: 4px; font-family: monospace; font-size: 0.75rem; color: #00FFCC; margin-top: 0.5rem;">
                     [RESTRICTED EXECUTION ${rex.passed ? 'PASS' : 'FAIL'} | IDENTITY ${rex.identity_bound ? 'BOUND' : 'UNBOUND'}]
-                    ${rex.output_log} (${rex.duration_ms}ms)
+                    ${escapeHtml(rex.output_log)} (${rex.duration_ms}ms)
                 </div>
             ` : ''}
         </div>
@@ -161,8 +167,8 @@ function renderProjectPosture(posture) {
         <div class="result-section">
             <h4>04. Empirical Falsification Hypothesis (H0)</h4>
             <div style="font-size: 0.8rem; color: #F59E0B; background: rgba(245, 158, 11, 0.08); padding: 0.6rem; border-radius: 6px; border: 1px solid rgba(245, 158, 11, 0.2);">
-                <strong>Falsifiable Null Hypothesis:</strong> ${out && out.null_hypothesis_h0 ? out.null_hypothesis_h0 : 'NOT_SPECIFIED'}<br>
-                <strong>Evaluation:</strong> ${out && out.h0_evaluation_status ? out.h0_evaluation_status : 'NOT_EVALUATED'}
+                <strong>Falsifiable Null Hypothesis:</strong> ${escapeHtml(out && out.null_hypothesis_h0 ? out.null_hypothesis_h0 : 'NOT_SPECIFIED')}<br>
+                <strong>Evaluation:</strong> ${escapeHtml(out && out.h0_evaluation_status ? out.h0_evaluation_status : 'NOT_EVALUATED')}
             </div>
         </div>
 
@@ -170,7 +176,7 @@ function renderProjectPosture(posture) {
             <h4>05. Checkpoint Audit Ledger</h4>
             <div style="font-size: 0.75rem; color: #94A3B8;">
                 ${posture.checkpoints.map(chk => `
-                    <div>&bull; <strong>[${chk.stage}]</strong> <code>${chk.actor}</code>: ${chk.title} — <em>${chk.evidence_summary}</em></div>
+                    <div>&bull; <strong>[${escapeHtml(chk.stage)}]</strong> <code>${escapeHtml(chk.actor)}</code>: ${escapeHtml(chk.title)} — <em>${escapeHtml(chk.evidence_summary)}</em></div>
                 `).join('')}
             </div>
         </div>
@@ -187,7 +193,7 @@ function renderProjectPosture(posture) {
 async function handleExportDossier() {
     if (!currentProjectId) return;
     try {
-        const res = await fetch(`/api/v1/export/dossier/${currentProjectId}`);
+        const res = await fetch(`/api/v1/export/dossier/${encodeURIComponent(currentProjectId)}`);
         const data = await res.json();
         
         const blob = new Blob([data.markdown_dossier], { type: 'text/markdown' });
@@ -203,7 +209,7 @@ async function handleExportDossier() {
 
 async function handleExportHtmlDossier() {
     if (!currentProjectId) return;
-    window.open(`/api/v1/export/dossier/html/${currentProjectId}`, '_blank');
+    window.open(`/api/v1/export/dossier/html/${encodeURIComponent(currentProjectId)}`, '_blank');
 }
 
 async function loadRecentProjects() {
@@ -213,12 +219,22 @@ async function loadRecentProjects() {
         const list = document.getElementById('recent-list');
         if (!data.projects || data.projects.length === 0) return;
         
-        list.innerHTML = data.projects.map(p => `
-            <div class="recent-item" onclick="loadProjectById('${p.project_id}')">
-                <span>${p.objective.substring(0, 35)}...</span>
-                <span class="mono-text" style="color: #00FFCC;">${p.stage}</span>
-            </div>
-        `).join('');
+        list.replaceChildren();
+        data.projects.forEach(p => {
+            const item = document.createElement('div');
+            item.className = 'recent-item';
+            item.addEventListener('click', () => loadProjectById(p.project_id));
+
+            const objective = document.createElement('span');
+            objective.textContent = String(p.objective ?? '').substring(0, 35) + '...';
+            const stage = document.createElement('span');
+            stage.className = 'mono-text';
+            stage.style.color = '#00FFCC';
+            stage.textContent = String(p.stage ?? 'UNKNOWN');
+
+            item.append(objective, stage);
+            list.appendChild(item);
+        });
     } catch (e) {
         // Ignore
     }
@@ -226,7 +242,7 @@ async function loadRecentProjects() {
 
 async function loadProjectById(id) {
     try {
-        const res = await fetch(`/api/v1/projects/${id}`);
+        const res = await fetch(`/api/v1/projects/${encodeURIComponent(id)}`);
         const data = await res.json();
         currentProjectId = id;
         document.getElementById('objective-input').value = data.posture.objective;

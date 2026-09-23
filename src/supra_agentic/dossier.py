@@ -2,25 +2,48 @@
 
 from __future__ import annotations
 
+from html import escape
+
 from .models import ProjectPosture
+
+
+def _html(value: object) -> str:
+    return escape(str(value), quote=True)
 
 
 def generate_svg_architecture(posture: ProjectPosture) -> str:
     """Generate an inline SVG diagram representing the project's autonomous DAG."""
-    cand_name = (
+    cand_name = _html(
         posture.selected_candidate.pathway_name if posture.selected_candidate else "Standard"
     )
-    verdict = posture.verification.verdict if posture.verification else "NOT_EVALUATED"
+    verdict = _html(posture.verification.verdict if posture.verification else "NOT_EVALUATED")
     latest_execution = (
         posture.restricted_execution_results[-1] if posture.restricted_execution_results else None
     )
-    restricted_status = (
+    restricted_status = _html(
         "BOUND_PASS"
         if latest_execution and latest_execution.passed and latest_execution.identity_bound
         else "BOUND_FAIL"
         if latest_execution and latest_execution.identity_bound
         else "UNBOUND"
         if latest_execution
+        else "NOT_RUN"
+    )
+    latest_sandbox = (
+        posture.secure_sandbox_results[-1] if posture.secure_sandbox_results else None
+    )
+    sandbox_status = _html(
+        "IDENTITY_BOUND_ISOLATION_PASS"
+        if latest_sandbox
+        and latest_sandbox.passed
+        and latest_sandbox.identity_bound
+        and latest_sandbox.isolation_verified
+        else "IDENTITY_BOUND_ISOLATION_FAIL"
+        if latest_sandbox
+        and latest_sandbox.identity_bound
+        and latest_sandbox.isolation_verified
+        else "UNVERIFIED_ISOLATION"
+        if latest_sandbox
         else "NOT_RUN"
     )
 
@@ -53,11 +76,12 @@ def generate_svg_architecture(posture: ProjectPosture) -> str:
   <text x="300" y="95" fill="#F0F4F8" font-family="sans-serif" font-size="11" font-weight="bold" text-anchor="middle">02. STRATEGY</text>
   <text x="300" y="115" fill="#00FFCC" font-family="monospace" font-size="9" text-anchor="middle">{cand_name[:14]}...</text>
 
-  <!-- Node 3: Scoped coverage + restricted execution -->
+  <!-- Node 3: Scoped coverage + execution gates -->
   <rect x="460" y="60" width="120" height="80" rx="6" fill="#131822" stroke="#00FFCC" stroke-width="1.5"/>
   <text x="520" y="90" fill="#F0F4F8" font-family="sans-serif" font-size="11" font-weight="bold" text-anchor="middle">03. CHECKS</text>
   <text x="520" y="108" fill="#10B981" font-family="monospace" font-size="9" text-anchor="middle">Coverage: {verdict}</text>
-  <text x="520" y="124" fill="#94A3B8" font-family="monospace" font-size="8" text-anchor="middle">Restricted: {restricted_status}</text>
+  <text x="520" y="121" fill="#94A3B8" font-family="monospace" font-size="7.5" text-anchor="middle">Restricted: {restricted_status}</text>
+  <text x="520" y="133" fill="#94A3B8" font-family="monospace" font-size="7.5" text-anchor="middle">Sandbox: {sandbox_status}</text>
 
   <!-- Node 4: Final Deliverable -->
   <circle cx="660" cy="100" r="28" fill="url(#tealGrad)"/>
@@ -74,12 +98,59 @@ def export_full_html_dossier(posture: ProjectPosture) -> str:
     h0 = out.get("null_hypothesis_h0") if out else None
     h0_status = out.get("h0_evaluation_status", "NOT_EVALUATED") if out else "NOT_EVALUATED"
     scientific_status = out.get("scientific_status", "NOT_VALIDATED") if out else "NOT_VALIDATED"
+    project_id = _html(posture.project_id)
+    stage = _html(posture.stage.value)
+    objective = _html(posture.objective)
+    domain = _html(decomp.domain if decomp else "general")
+    candidate_name = _html(cand.pathway_name if cand else "N/A")
+    paradigm = _html(cand.paradigm_type if cand else "N/A")
+    hypothesis = _html(cand.hypothesis if cand else "N/A")
+    invariants = "".join(
+        f"<li><strong>[INVARIANT]</strong> {_html(inv)}</li>"
+        for inv in (decomp.invariants if decomp else [])
+    )
+    h0_text = _html(h0 if h0 else "NOT_SPECIFIED")
+    h0_status_text = _html(h0_status)
+    scientific_status_text = _html(scientific_status)
+    latest_execution = (
+        posture.restricted_execution_results[-1] if posture.restricted_execution_results else None
+    )
+    latest_sandbox = (
+        posture.secure_sandbox_results[-1] if posture.secure_sandbox_results else None
+    )
+    restricted_status_text = _html(
+        "BOUND_PASS"
+        if latest_execution and latest_execution.passed and latest_execution.identity_bound
+        else "BOUND_FAIL"
+        if latest_execution and latest_execution.identity_bound
+        else "UNBOUND"
+        if latest_execution
+        else "NOT_RUN"
+    )
+    sandbox_status_text = _html(
+        "IDENTITY_BOUND_ISOLATION_PASS"
+        if latest_sandbox
+        and latest_sandbox.passed
+        and latest_sandbox.identity_bound
+        and latest_sandbox.isolation_verified
+        else "IDENTITY_BOUND_ISOLATION_FAIL"
+        if latest_sandbox
+        and latest_sandbox.identity_bound
+        and latest_sandbox.isolation_verified
+        else "UNVERIFIED_ISOLATION"
+        if latest_sandbox
+        else "NOT_RUN"
+    )
+    sandbox_image_text = _html(
+        latest_sandbox.image_id if latest_sandbox and latest_sandbox.image_id else "NOT_AVAILABLE"
+    )
+    audit_hash = _html(out.get("audit_sha256", "NOT_AVAILABLE") if out else "NOT_AVAILABLE")
 
     return f"""<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
-<title>SUPRA Technical Dossier — {posture.project_id}</title>
+<title>SUPRA Technical Dossier — {project_id}</title>
 <style>
   body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; max-width: 860px; margin: 40px auto; padding: 0 20px; color: #1e293b; }}
   h1, h2, h3 {{ color: #0f172a; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; }}
@@ -91,12 +162,12 @@ def export_full_html_dossier(posture: ProjectPosture) -> str:
 </head>
 <body>
   <h1>SUPRA Autonomous Taskmaster Dossier</h1>
-  <p><strong>Project ID:</strong> <span class="mono">{posture.project_id}</span> | <strong>Stage:</strong> <span class="badge">{posture.stage.value}</span></p>
+  <p><strong>Project ID:</strong> <span class="mono">{project_id}</span> | <strong>Stage:</strong> <span class="badge">{stage}</span></p>
   
   <div class="card">
     <h3>Executive Objective</h3>
-    <p>{posture.objective}</p>
-    <p><strong>Domain:</strong> <span class="mono">{decomp.domain if decomp else "general"}</span></p>
+    <p>{objective}</p>
+    <p><strong>Domain:</strong> <span class="mono">{domain}</span></p>
   </div>
 
   <h2>Autonomous Architectural Graph</h2>
@@ -104,27 +175,35 @@ def export_full_html_dossier(posture: ProjectPosture) -> str:
 
   <h2>System Invariants & Boundary Constraints</h2>
   <ul>
-    {"".join(f"<li><strong>[INVARIANT]</strong> {inv}</li>" for inv in (decomp.invariants if decomp else []))}
+    {invariants}
   </ul>
 
   <h2>Selected Strategy Candidate</h2>
   <div class="card">
-    <h3>{cand.pathway_name if cand else "N/A"} <span class="badge">{cand.paradigm_type if cand else "N/A"}</span></h3>
-    <p><strong>Hypothesis:</strong> {cand.hypothesis if cand else "N/A"}</p>
+    <h3>{candidate_name} <span class="badge">{paradigm}</span></h3>
+    <p><strong>Hypothesis:</strong> {hypothesis}</p>
     <p><strong>Feasibility:</strong> {cand.feasibility_score if cand else 0.0:.2f} | <strong>Divergence:</strong> {cand.divergence_score if cand else 0.0:.2f}</p>
   </div>
 
   <h2>Empirical Falsification Hypothesis (H0)</h2>
   <div class="card" style="background: #fffbeb; border-color: #fef3c7;">
-    <p><strong>Null Hypothesis:</strong> {h0 if h0 else "NOT_SPECIFIED"}</p>
-    <p><strong>Evaluation Status:</strong> {h0_status}</p>
+    <p><strong>Null Hypothesis:</strong> {h0_text}</p>
+    <p><strong>Evaluation Status:</strong> {h0_status_text}</p>
+  </div>
+
+  <h2>Execution Boundaries</h2>
+  <div class="card">
+    <p><strong>Restricted preflight:</strong> {restricted_status_text}</p>
+    <p><strong>Secure sandbox:</strong> {sandbox_status_text}</p>
+    <p><strong>Sandbox image ID:</strong> <span class="mono">{sandbox_image_text}</span></p>
+    <p>These statuses describe workflow execution boundaries only; they do not establish scientific validity or deployed-system safety.</p>
   </div>
 
   <h2>Scientific Status</h2>
-  <p><strong>Status:</strong> {scientific_status}</p>
+  <p><strong>Status:</strong> {scientific_status_text}</p>
 
   <h2>Cryptographic Integrity Signature</h2>
-  <p><strong>SHA-256 Payload Integrity Hash:</strong> <span class="mono">{out.get("audit_sha256", "NOT_AVAILABLE") if out else "NOT_AVAILABLE"}</span></p>
+  <p><strong>SHA-256 Payload Integrity Hash:</strong> <span class="mono">{audit_hash}</span></p>
   <p>This hash identifies the serialized payload; it does not certify truth or scientific validity.</p>
 </body>
 </html>"""

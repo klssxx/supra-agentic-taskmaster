@@ -10,11 +10,12 @@ from typing import Any
 from .agent import TaskmasterAgent, create_taskmaster_agent
 from .models import ProjectPosture
 from .providers import AgentProvider, ProviderError
-from .state import state_manager
+from .state import CompletionGateError, state_manager
 from .tools import (
     decompose_objective,
     record_checkpoint,
     restricted_python_executor,
+    secure_sandbox_executor,
     synthesize_strategy,
     verify_solution,
 )
@@ -23,7 +24,7 @@ logger = logging.getLogger("supra_agentic.runner")
 
 
 class TaskmasterRunner:
-    """Executes the full 5-stage Taskmaster workflow autonomously with self-correction."""
+    """Executes the canonical Taskmaster workflow with independent completion gates."""
 
     def __init__(
         self,
@@ -73,7 +74,7 @@ class TaskmasterRunner:
         use_model: bool | None = None,
         model_prompt: str | None = None,
     ) -> ProjectPosture:
-        """Execute the 5-stage autonomous cycle with dynamic self-correction loops."""
+        """Execute the autonomous cycle with dynamic self-correction and isolation gates."""
         start_time = time.monotonic()
         clean_obj = objective.strip()
         if not clean_obj:
@@ -174,13 +175,27 @@ class TaskmasterRunner:
                     f"after {retries} correction attempt(s)"
                 )
 
-            # Stage 5: Final Checkpoint & Deliverable Ledger (COMPLETED)
-            logger.info(f"[{pid}] Executing Tool 5: record_checkpoint")
+            # Stage 4c: externally isolated Docker sandbox.
+            logger.info(f"[{pid}] Executing Tool 5: secure_sandbox_executor")
+            sandbox_res = secure_sandbox_executor(project_id=pid)
+            if sandbox_res["status"] != "success":
+                logger.warning(
+                    "[%s] Secure sandbox gate is blocked (%s); final checkpoint "
+                    "will remain non-completed.",
+                    pid,
+                    sandbox_res["secure_sandbox_status"],
+                )
+
+            # Final Checkpoint & Deliverable Ledger (COMPLETED only if all gates pass)
+            logger.info(f"[{pid}] Executing Tool 6: record_checkpoint")
             elapsed = time.monotonic() - start_time
             record_checkpoint(
                 project_id=pid,
                 deliverable_title=f"Autonomous Solution: {clean_obj[:50]}",
-                summary=f"Taskmaster completed all 5 stages in {elapsed:.2f}s (Self-Corrections: {retries}).",
+                summary=(
+                    f"Taskmaster executed the canonical workflow in {elapsed:.2f}s "
+                    f"(Self-Corrections: {retries})."
+                ),
                 provider_metadata=model_assistance,
             )
 
@@ -191,6 +206,11 @@ class TaskmasterRunner:
             )
             return final_posture
 
+        except CompletionGateError as exc:
+            logger.warning("[%s] Completion gate blocked: %s", pid, exc)
+            blocked_posture = state_manager.get_project(pid)
+            assert blocked_posture is not None
+            return blocked_posture
         except Exception as exc:
             error_type = type(exc).__name__
             logger.error("[%s] Taskmaster execution failed (%s)", pid, error_type)

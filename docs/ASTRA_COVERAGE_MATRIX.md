@@ -22,13 +22,13 @@ before those checks are considered executed for this HEAD.
 
 | ID | Current enforcement | Evidence / remaining limitation |
 |---|---|---|
-| ASTRA-001 | ENFORCED | UI, API, state and final payload separate workflow completion, coverage verdict, restricted execution and scientific status. Missing UI values no longer become PASS/95%/VERIFIED. |
+| ASTRA-001 | ENFORCED | UI, API, state and final payload separate coverage verdict, restricted execution, sandbox-isolation smoke, completion and scientific status. COMPLETED requires PASS/CONDITIONAL_PASS coverage, current BOUND_PASS restricted preflight, and a current identity-bound isolation-smoke PASS. The sandbox smoke does not execute the candidate mechanism. Missing/FAIL/NOT_EVALUATED cannot complete. |
 | ASTRA-003 | PARTIAL | Final payload records telemetry provenance, transform and scope; universal claim-level provenance remains outside SUPRA. |
 | ASTRA-006 | ENFORCED | Verification verdict vocabulary is closed; confidence is bounded and labelled `HEURISTIC_COVERAGE` / fraction of declared invariants, not probability of real success. |
 | ASTRA-017 | ENFORCED | Restricted stage advances only for a passing execution whose identity is derived from the persisted selected candidate and executed protocol under the current execution-semantics version. Caller strings cannot create binding. Scientific validation is structurally rejected. |
 | ASTRA-018 | LIMITATION_GUARD | SUPRA does not implement a full discriminant scientific protocol; final output declares `discriminant_protocol_status=NOT_ESTABLISHED`. |
 | ASTRA-019 | ENFORCED | Workflow, textual coverage, restricted execution and scientific status are serialized as separate channels. |
-| ASTRA-020 | NOT_APPLICABLE_RUNTIME | SUPRA does not turn verification verdicts into adaptive rewards; final output declares `learning_update_status=NOT_APPLICABLE`. |
+| ASTRA-020 | ENFORCED | SUPRA does not turn verification verdicts into adaptive rewards, and FAIL/NOT_EVALUATED cannot satisfy the completion gate. `learning_update_status` remains NOT_APPLICABLE. |
 | ASTRA-024 | PARTIAL | Final payload records known dependencies and explicitly sets `closure_complete=false` with unclosed code/runtime/provider/environment dependencies. |
 | ASTRA-026 | PARTIAL | Candidate, selection, verification and restricted-execution opportunities are counted. Provider generation-call accounting remains explicitly non-authoritative and `budget_complete=false`. |
 | ASTRA-027 | LIMITATION_GUARD | No independent confirmatory campaign is claimed; `independent_confirmation_status=NOT_ESTABLISHED`. |
@@ -53,7 +53,8 @@ All 14 are present in the SUPRA manifest. The previous omissions of
 - `D6_ADAPTIVE_BENEFIT = STILL_UNRESOLVED`
 - `SCIENTIFIC_ADVANTAGE_OF_CRIBA = NOT_ESTABLISHED`
 - Anti-Goodhart runtime boundary is partially implemented out-of-band.
-- `governance/ANTI_GOODHART_STATUS.yaml` keeps STANDARD **DISABLED** because G3 deployment-resource isolation is NOT_VERIFIED and the G4 two-consecutive-decisions row remains NOT_YET_IMPLEMENTED.
+- G4 code-boundary sentinels, including two consecutive decisions after persisted observer state, are implemented.
+- `governance/ANTI_GOODHART_STATUS.yaml` keeps STANDARD **DISABLED** because G3 deployment-resource isolation remains NOT_VERIFIED.
 - The 14 SUPRA canon contracts remain unchanged; the observer does not promote D3/D4/D6 or scientific advantage.
 
 A green CI run is evidence for the checks that actually executed. It is not a

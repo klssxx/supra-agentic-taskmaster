@@ -2,26 +2,52 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 import os
+import secrets
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
 from .dossier import export_full_html_dossier
 from .mcp_handler import handle_mcp_jsonrpc_request
+from .models import ProjectPosture
 from .providers import ProviderError, get_provider, provider_names
 from .runner import TaskmasterRunner, taskmaster_runner
-from .state import state_manager
+from .state import state_manager, validate_project_id
 
 logger = logging.getLogger("supra_agentic.service")
+
+
+def _secure_sandbox_status(posture: ProjectPosture) -> str:
+    latest = posture.secure_sandbox_results[-1] if posture.secure_sandbox_results else None
+    if latest and latest.passed and latest.identity_bound and latest.isolation_verified:
+        return "IDENTITY_BOUND_ISOLATION_PASS"
+    if latest and latest.identity_bound and latest.isolation_verified:
+        return "IDENTITY_BOUND_ISOLATION_FAIL"
+    if latest:
+        return "UNVERIFIED_ISOLATION"
+    return "NOT_RUN"
+
+
+def _secure_sandbox_scope(posture: ProjectPosture) -> str:
+    latest = posture.secure_sandbox_results[-1] if posture.secure_sandbox_results else None
+    return latest.execution_scope if latest else "NOT_RUN"
+
+
+def _candidate_mechanism_executed_in_secure_sandbox(posture: ProjectPosture) -> bool:
+    latest = posture.secure_sandbox_results[-1] if posture.secure_sandbox_results else None
+    return bool(latest and latest.candidate_mechanism_executed)
+
+
 MAX_MCP_BODY_SIZE = 8 * 1024 * 1024
 
 
@@ -34,7 +60,7 @@ def _parse_cors_origins(raw: str | None) -> list[str]:
         raise RuntimeError("SUPRA_CORS_ORIGINS contains an empty origin")
     for origin in origins:
         if origin == "*":
-            continue
+            raise RuntimeError("SUPRA_CORS_ORIGINS must not contain wildcard origins")
         parsed = urlparse(origin)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise RuntimeError(f"Invalid CORS origin: {origin!r}")
@@ -42,6 +68,28 @@ def _parse_cors_origins(raw: str | None) -> list[str]:
 
 
 CORS_ORIGINS = _parse_cors_origins(os.getenv("SUPRA_CORS_ORIGINS"))
+API_KEY = os.getenv("SUPRA_API_KEY", "").strip()
+
+
+def _is_loopback_client(request: Request) -> bool:
+    host = request.client.host if request.client is not None else ""
+    if host == "testclient":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return host.lower() == "localhost"
+
+
+def _supplied_api_key(request: Request) -> str:
+    direct = request.headers.get("x-api-key", "").strip()
+    if direct:
+        return direct
+    auth = request.headers.get("authorization", "").strip()
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip()
+    return ""
+
 
 app = FastAPI(
     title="SUPRA Agentic Taskmaster",
@@ -55,9 +103,29 @@ if CORS_ORIGINS:
         CORSMiddleware,
         allow_origins=CORS_ORIGINS,
         allow_credentials=False,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-API-Key"],
     )
+
+
+@app.middleware("http")
+async def enforce_api_auth(request: Request, call_next):
+    """Require API-key authentication for non-loopback API clients."""
+    if request.url.path.startswith("/api/v1/") and not _is_loopback_client(request):
+        if not API_KEY:
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content={"detail": "SUPRA_API_KEY is required for remote API access."},
+            )
+        supplied = _supplied_api_key(request)
+        if not supplied or not secrets.compare_digest(supplied, API_KEY):
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={"detail": "Invalid or missing API credentials."},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    return await call_next(request)
+
 
 STATIC_DIR = Path(__file__).parent / "web"
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
@@ -70,7 +138,12 @@ class CreateProjectRequest(BaseModel):
         ..., min_length=5, max_length=2000, description="The challenge or problem to solve."
     )
     domain: str = Field("general", max_length=100, description="Target problem domain.")
-    project_id: str | None = Field(None, max_length=64, description="Optional custom project ID.")
+    project_id: str | None = Field(
+        None,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$",
+        description="Optional custom project ID using letters, digits, underscore, or hyphen.",
+    )
     allow_disruptive: bool = Field(
         True, description="Whether to include disruptive divergent pathways."
     )
@@ -165,10 +238,15 @@ def create_and_run_project(req: CreateProjectRequest) -> dict[str, Any] | Respon
     Returns HTTP status for workflow execution. A 201 response means the
     workflow request completed; verification and scientific status are returned
     separately and must not be inferred from HTTP success.
-    - 201 Created + {"status": "success"} on workflow completion
+    - 201 Created + {"status": "success"} only when completion gates pass
+    - 201 Created + {"status": "blocked"} when verification/execution gates block completion
     - 500 Internal Server Error + {"status": "error"} on workflow failure
     """
     try:
+        if req.project_id is not None:
+            validate_project_id(req.project_id)
+            if state_manager.get_project(req.project_id) is not None:
+                raise HTTPException(status_code=409, detail="Project ID already exists.")
         runner = TaskmasterRunner(provider_name=req.provider, model_name=req.model)
         posture = runner.run_golden_path(
             objective=req.objective,
@@ -200,12 +278,19 @@ def create_and_run_project(req: CreateProjectRequest) -> dict[str, Any] | Respon
             )
 
         final_output = posture.final_output or {}
+        workflow_completed = posture.stage.value == "COMPLETED"
         return {
-            "status": "success",
+            "status": "success" if workflow_completed else "blocked",
             "status_scope": "WORKFLOW_EXECUTION_ONLY",
+            "completion_status": "COMPLETED" if workflow_completed else "BLOCKED",
             "workflow_status": posture.stage.value,
             "verification_status": (
                 posture.verification.verdict if posture.verification else "NOT_EVALUATED"
+            ),
+            "secure_sandbox_status": _secure_sandbox_status(posture),
+            "secure_sandbox_execution_scope": _secure_sandbox_scope(posture),
+            "candidate_mechanism_executed_in_secure_sandbox": (
+                _candidate_mechanism_executed_in_secure_sandbox(posture)
             ),
             "verification_scope": (
                 posture.verification.verification_scope
@@ -217,6 +302,11 @@ def create_and_run_project(req: CreateProjectRequest) -> dict[str, Any] | Respon
             "stage": posture.stage.value,
             "posture": posture.model_dump(),
         }
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        logger.warning("Invalid project request (%s)", type(exc).__name__)
+        raise HTTPException(status_code=400, detail="Invalid project request.") from exc
     except Exception as exc:
         logger.error("Project execution failed (%s)", type(exc).__name__)
         raise HTTPException(status_code=500, detail="Project execution failed.") from exc
@@ -262,7 +352,11 @@ def list_projects(limit: int = 20) -> dict[str, Any]:
 @app.get("/api/v1/projects/{project_id}", tags=["Taskmaster"])
 def get_project_posture(project_id: str) -> dict[str, Any]:
     """Retrieve full project telemetry and deliverable ledger."""
-    posture = state_manager.get_project(project_id)
+    try:
+        validate_project_id(project_id)
+        posture = state_manager.get_project(project_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid project ID.") from exc
     if not posture:
         raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found.")
     return {
@@ -290,17 +384,23 @@ def example_quick_run() -> dict[str, Any]:
     )
     posture = taskmaster_runner.run_golden_path(
         objective=demo_objective,
-        project_id="example-quick-run",
+        project_id=None,
         domain="cloud_security",
         allow_disruptive=True,
     )
+    completed = posture.stage.value == "COMPLETED"
     return {
-        "status": "success",
+        "status": "success" if completed else "blocked",
         "example": True,
-        "stages_completed": 5,
+        "completion_status": "COMPLETED" if completed else "BLOCKED",
         "workflow_status": posture.stage.value,
         "verification_status": (
             posture.verification.verdict if posture.verification else "NOT_EVALUATED"
+        ),
+        "secure_sandbox_status": _secure_sandbox_status(posture),
+        "secure_sandbox_execution_scope": _secure_sandbox_scope(posture),
+        "candidate_mechanism_executed_in_secure_sandbox": (
+            _candidate_mechanism_executed_in_secure_sandbox(posture)
         ),
         "scientific_status": (
             (posture.final_output or {}).get("scientific_status", "NOT_VALIDATED")
@@ -353,7 +453,11 @@ async def mcp_jsonrpc_endpoint(request: Request) -> dict[str, Any]:
 @app.get("/api/v1/export/dossier/{project_id}", tags=["Export"])
 def export_technical_dossier(project_id: str) -> dict[str, Any]:
     """Export a markdown technical dossier of the completed project."""
-    posture = state_manager.get_project(project_id)
+    try:
+        validate_project_id(project_id)
+        posture = state_manager.get_project(project_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid project ID.") from exc
     if not posture:
         raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found.")
 
@@ -426,7 +530,11 @@ def export_technical_dossier(project_id: str) -> dict[str, Any]:
 @app.get("/api/v1/export/dossier/html/{project_id}", response_class=HTMLResponse, tags=["Export"])
 def export_html_dossier_route(project_id: str) -> HTMLResponse:
     """Export a self-contained HTML specification with embedded SVG architecture."""
-    posture = state_manager.get_project(project_id)
+    try:
+        validate_project_id(project_id)
+        posture = state_manager.get_project(project_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid project ID.") from exc
     if not posture:
         raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found.")
     html_content = export_full_html_dossier(posture)
