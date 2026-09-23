@@ -3,6 +3,7 @@
 import tempfile
 
 import pytest
+
 from supra_agentic.dossier import generate_svg_architecture
 from supra_agentic.models import RestrictedExecutionResult, SecureSandboxResult
 from supra_agentic.state import CompletionGateError, state_manager
@@ -66,7 +67,31 @@ def test_astra_secure_sandbox_requires_all_isolation_controls_for_verification()
         resource_limits_applied=False,
     )
     assert receipt.isolation_verified is False
+    assert receipt.execution_scope == "IDENTITY_BOUNDARY_SMOKE_ONLY"
+    assert receipt.candidate_mechanism_executed is False
     assert receipt.scientific_validation is False
+
+
+def test_astra_secure_sandbox_cannot_claim_candidate_mechanism_execution():
+    with pytest.raises(ValueError):
+        SecureSandboxResult(
+            candidate_id="cand-x",
+            mechanism_version="sha256:" + "1" * 64,
+            claim_id="claim-x",
+            protocol_version="sha256:" + "2" * 64,
+            image="python:test",
+            image_id="sha256:" + "3" * 64,
+            passed=True,
+            observed_result="PASS",
+            duration_ms=1,
+            network_isolated=True,
+            read_only_root=True,
+            capabilities_dropped=True,
+            no_new_privileges=True,
+            non_root_user=True,
+            resource_limits_applied=True,
+            candidate_mechanism_executed=True,
+        )
 
 
 def test_astra_017_execution_identity_is_derived_from_selected_candidate():

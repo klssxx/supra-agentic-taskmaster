@@ -39,8 +39,9 @@ contracts:
   - tests/astra_canon/test_astra_product_paths.py
   - tests/astra_canon/test_astra_frontend_contracts.py
   limitations:
-  - COMPLETED solo se emite cuando la verificación de cobertura es PASS o CONDITIONAL_PASS y la ejecución restringida vigente es BOUND_PASS.
-  - COMPLETED sigue sin implicar validación científica ni confirmación causal.
+  - COMPLETED solo se emite cuando la verificación de cobertura es PASS o CONDITIONAL_PASS, la ejecución restringida vigente es BOUND_PASS y el smoke de aislamiento ligado a identidad está vigente.
+  - El smoke Docker acredita controles de aislamiento e identidad; no ejecuta el mecanismo, action plan o hypothesis del candidato.
+  - COMPLETED sigue sin implicar ejecución semántica del candidato, validación científica ni confirmación causal.
   - Los vocabularios legacy no están unificados en una única enum epistémica.
 
 - id: ASTRA-003

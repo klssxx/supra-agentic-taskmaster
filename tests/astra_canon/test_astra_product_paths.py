@@ -5,9 +5,17 @@ from __future__ import annotations
 import tempfile
 
 import pytest
-import supra_agentic.runner as runner_module
 from pydantic import ValidationError
-from supra_agentic.models import ProjectPosture, TaskmasterStage, VerificationReport
+
+import supra_agentic.runner as runner_module
+from supra_agentic.models import (
+    SECURE_SANDBOX_SEMANTICS_VERSION,
+    ProjectPosture,
+    SecureSandboxResult,
+    TaskmasterStage,
+    VerificationReport,
+    candidate_execution_identity,
+)
 from supra_agentic.runner import TaskmasterRunner
 from supra_agentic.state import CompletionGateError, state_manager
 from supra_agentic.tools import (
@@ -362,7 +370,7 @@ def test_astra_b03_current_semantics_with_forged_candidate_identity_is_downgrade
     posture = ProjectPosture.model_validate(raw)
     assert posture.stage is TaskmasterStage.STRATIFIED
     assert posture.restricted_execution_results[0].identity_bound is False
-    assert posture.checkpoints[-1].title == "Persisted execution accreditation invalidated"
+    assert posture.checkpoints[-1].title == "Persisted restricted execution invalidated"
 
 
 def test_astra_b03_completed_workflow_revalidates_and_revokes_stale_completion():

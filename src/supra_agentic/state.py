@@ -339,9 +339,9 @@ class ProjectStateManager:
                 output["secure_sandbox_identity_bound"] = result.identity_bound
                 output["secure_sandbox_isolation_verified"] = result.isolation_verified
                 output["secure_sandbox_status"] = (
-                    "ISOLATED_BOUND_PASS"
+                    "IDENTITY_BOUND_ISOLATION_PASS"
                     if sandbox_gate
-                    else "ISOLATED_BOUND_FAIL"
+                    else "IDENTITY_BOUND_ISOLATION_FAIL"
                     if result.identity_bound and result.isolation_verified
                     else "UNVERIFIED_ISOLATION"
                 )
@@ -351,12 +351,14 @@ class ProjectStateManager:
             p.checkpoints.append(
                 CheckpointRecord(
                     stage=p.stage,
-                    title="Secure Sandbox Execution",
+                    title="Secure Sandbox Isolation Smoke",
                     evidence_summary=(
                         f"Backend: {result.backend}. Passed: {result.passed}. "
                         f"Identity bound: {result.identity_bound}. "
                         f"Isolation verified: {result.isolation_verified}. "
-                        f"Timed out: {result.timed_out}. Scientific validation: False."
+                        f"Scope: {result.execution_scope}. Candidate mechanism executed: "
+                        f"{result.candidate_mechanism_executed}. Timed out: {result.timed_out}. "
+                        "Scientific validation: False."
                     ),
                     actor="agent:supra:secure-sandbox",
                 )
@@ -365,7 +367,7 @@ class ProjectStateManager:
             return p
 
     def complete_project(self, project_id: str, final_output: dict[str, Any]) -> ProjectPosture:
-        """Complete only when verification, preflight, and isolated sandbox gates pass."""
+        """Complete only when verification, preflight, and identity-bound isolation gates pass."""
         with self._lock:
             p = self._get_required_project(project_id)
             verification_status = (
@@ -391,12 +393,12 @@ class ProjectStateManager:
                 else "NOT_RUN"
             )
             sandbox_status = (
-                "ISOLATED_BOUND_PASS"
+                "IDENTITY_BOUND_ISOLATION_PASS"
                 if latest_sandbox
                 and latest_sandbox.passed
                 and latest_sandbox.identity_bound
                 and latest_sandbox.isolation_verified
-                else "ISOLATED_BOUND_FAIL"
+                else "IDENTITY_BOUND_ISOLATION_FAIL"
                 if latest_sandbox
                 and latest_sandbox.identity_bound
                 and latest_sandbox.isolation_verified
@@ -406,7 +408,7 @@ class ProjectStateManager:
             )
             verification_gate = verification_status in {"PASS", "CONDITIONAL_PASS"}
             execution_gate = execution_status == "BOUND_PASS"
-            sandbox_gate = sandbox_status == "ISOLATED_BOUND_PASS"
+            sandbox_gate = sandbox_status == "IDENTITY_BOUND_ISOLATION_PASS"
             if not verification_gate or not execution_gate or not sandbox_gate:
                 p.updated_at = time.time()
                 p.checkpoints.append(
@@ -425,7 +427,7 @@ class ProjectStateManager:
                 raise CompletionGateError(
                     "Completion requires verification PASS/CONDITIONAL_PASS, "
                     "current BOUND_PASS restricted preflight, and current "
-                    "ISOLATED_BOUND_PASS secure sandbox execution."
+                    "IDENTITY_BOUND_ISOLATION_PASS sandbox isolation smoke."
                 )
 
             payload = dict(final_output)
@@ -436,6 +438,12 @@ class ProjectStateManager:
             )
             payload["secure_sandbox_isolation_verified"] = bool(
                 latest_sandbox and latest_sandbox.isolation_verified
+            )
+            payload["secure_sandbox_execution_scope"] = (
+                latest_sandbox.execution_scope if latest_sandbox else "NOT_RUN"
+            )
+            payload["candidate_mechanism_executed_in_secure_sandbox"] = bool(
+                latest_sandbox and latest_sandbox.candidate_mechanism_executed
             )
             p.final_output = payload
             p.stage = TaskmasterStage.COMPLETED

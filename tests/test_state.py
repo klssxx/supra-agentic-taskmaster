@@ -3,6 +3,7 @@
 import tempfile
 
 import pytest
+
 from supra_agentic.models import (
     RESTRICTED_EXECUTION_SEMANTICS_VERSION,
     SECURE_SANDBOX_SEMANTICS_VERSION,
@@ -144,7 +145,7 @@ def test_project_lifecycle_transitions():
         assert p5.stage == TaskmasterStage.COMPLETED
         assert p5.final_output is not None
         assert p5.final_output["deliverable"] == final_doc["deliverable"]
-        assert p5.final_output["secure_sandbox_status"] == "ISOLATED_BOUND_PASS"
+        assert p5.final_output["secure_sandbox_status"] == "IDENTITY_BOUND_ISOLATION_PASS"
         assert len(p5.checkpoints) == 7
 
         # Persistence check: load in fresh instance
@@ -260,7 +261,6 @@ def test_completed_workflow_is_revoked_immediately_by_latest_restricted_failure(
         assert revised.final_output["completion_status"] == "BLOCKED"
         assert revised.final_output["restricted_execution_status"] == "BOUND_FAIL"
         assert revised.final_output["derived_completion_state_revalidated"] is True
-
 
 
 @pytest.mark.parametrize("verdict", ["FAIL", "NOT_EVALUATED"])
@@ -398,7 +398,7 @@ def test_completion_gate_requires_current_isolated_sandbox_pass() -> None:
             ),
         )
 
-        with pytest.raises(CompletionGateError, match="secure sandbox"):
+        with pytest.raises(CompletionGateError, match="sandbox isolation smoke"):
             sm.complete_project(p.project_id, {"workflow_status": "COMPLETED"})
 
         blocked = sm.get_project(p.project_id)

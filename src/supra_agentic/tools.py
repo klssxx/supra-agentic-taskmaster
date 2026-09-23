@@ -589,10 +589,10 @@ def restricted_python_executor(
 
 
 # ---------------------------------------------------------------------------
-# Tool 5: secure external sandbox (completion isolation gate)
+# Tool 5: secure external sandbox (identity-bound isolation gate)
 # ---------------------------------------------------------------------------
 def _canonical_secure_sandbox_code(identity: dict[str, str]) -> str:
-    """Return a fixed protocol bound to the persisted candidate identity."""
+    """Return an identity-bound isolation smoke, not candidate mechanism execution."""
     payload = json.dumps(identity, sort_keys=True, ensure_ascii=True)
     return (
         "import json\n"
@@ -605,11 +605,12 @@ def _canonical_secure_sandbox_code(identity: dict[str, str]) -> str:
 
 
 def secure_sandbox_executor(project_id: str) -> dict[str, Any]:
-    """Run SUPRA's fixed completion protocol in a fail-closed Docker sandbox.
+    """Run an identity-bound isolation smoke in a fail-closed Docker sandbox.
 
-    The public tool accepts no code snippet.  The executed source is generated
-    internally from the persisted selected-candidate identity.  Docker/image
-    unavailability is recorded as UNKNOWN and cannot satisfy completion.
+    The public tool accepts no code snippet. The executed source is generated
+    only from the persisted selected-candidate identity and does not execute the
+    candidate mechanism, action plan, or hypothesis. Docker/image unavailability
+    is recorded as UNKNOWN and cannot satisfy workflow completion.
     """
     identity = _selected_candidate_identity(project_id)
     if identity is None:
@@ -639,17 +640,21 @@ def secure_sandbox_executor(project_id: str) -> dict[str, Any]:
 
     posture = state_manager.record_secure_sandbox_execution(project_id, result)
     sandbox_status = (
-        "ISOLATED_BOUND_PASS"
+        "IDENTITY_BOUND_ISOLATION_PASS"
         if result.passed and result.identity_bound and result.isolation_verified
-        else "ISOLATED_BOUND_FAIL"
+        else "IDENTITY_BOUND_ISOLATION_FAIL"
         if result.identity_bound and result.isolation_verified
         else "UNVERIFIED_ISOLATION"
     )
     return {
-        "status": "success" if sandbox_status == "ISOLATED_BOUND_PASS" else "blocked",
+        "status": "success" if sandbox_status == "IDENTITY_BOUND_ISOLATION_PASS" else "blocked",
         "project_id": project_id,
         "stage": posture.stage.value,
         "secure_sandbox_status": sandbox_status,
+        "secure_sandbox_execution_scope": result.execution_scope,
+        "candidate_mechanism_executed_in_secure_sandbox": (
+            result.candidate_mechanism_executed
+        ),
         "secure_sandbox_result": result.model_dump(),
     }
 
@@ -707,12 +712,12 @@ def record_checkpoint(
         else "NOT_RUN"
     )
     secure_sandbox_status = (
-        "ISOLATED_BOUND_PASS"
+        "IDENTITY_BOUND_ISOLATION_PASS"
         if latest_sandbox
         and latest_sandbox.passed
         and latest_sandbox.identity_bound
         and latest_sandbox.isolation_verified
-        else "ISOLATED_BOUND_FAIL"
+        else "IDENTITY_BOUND_ISOLATION_FAIL"
         if latest_sandbox
         and latest_sandbox.identity_bound
         and latest_sandbox.isolation_verified
@@ -792,6 +797,12 @@ def record_checkpoint(
         ),
         "secure_sandbox_isolation_verified": bool(
             latest_sandbox and latest_sandbox.isolation_verified
+        ),
+        "secure_sandbox_execution_scope": (
+            latest_sandbox.execution_scope if latest_sandbox else "NOT_RUN"
+        ),
+        "candidate_mechanism_executed_in_secure_sandbox": bool(
+            latest_sandbox and latest_sandbox.candidate_mechanism_executed
         ),
         "scientific_status": "NOT_VALIDATED",
         "discriminant_protocol_status": "NOT_ESTABLISHED",

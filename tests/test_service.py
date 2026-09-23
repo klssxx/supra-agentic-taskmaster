@@ -5,8 +5,9 @@ import tempfile
 import time
 
 import pytest
-import supra_agentic.service as service_module
 from fastapi.testclient import TestClient
+
+import supra_agentic.service as service_module
 from supra_agentic.dossier import export_full_html_dossier
 from supra_agentic.models import ProjectPosture, TaskmasterStage
 from supra_agentic.service import _parse_cors_origins, app
@@ -43,11 +44,16 @@ def test_quick_run_example():
         assert data["example"] is True
         assert data["completion_status"] in {"COMPLETED", "BLOCKED"}
         assert data["secure_sandbox_status"] in {
-            "ISOLATED_BOUND_PASS",
-            "ISOLATED_BOUND_FAIL",
+            "IDENTITY_BOUND_ISOLATION_PASS",
+            "IDENTITY_BOUND_ISOLATION_FAIL",
             "UNVERIFIED_ISOLATION",
             "NOT_RUN",
         }
+        assert data["secure_sandbox_execution_scope"] in {
+            "IDENTITY_BOUNDARY_SMOKE_ONLY",
+            "NOT_RUN",
+        }
+        assert data["candidate_mechanism_executed_in_secure_sandbox"] is False
         if data["completion_status"] == "BLOCKED":
             assert data["status"] == "blocked"
             assert data["stage"] != "COMPLETED"
@@ -55,7 +61,7 @@ def test_quick_run_example():
         else:
             assert data["status"] == "success"
             assert data["stage"] == "COMPLETED"
-            assert data["secure_sandbox_status"] == "ISOLATED_BOUND_PASS"
+            assert data["secure_sandbox_status"] == "IDENTITY_BOUND_ISOLATION_PASS"
             assert "audit_sha256" in data["deliverable"]
             assert "null_hypothesis_h0" in data["deliverable"]
 
@@ -97,6 +103,11 @@ def test_webmcp_jsonrpc_protocol():
         assert call_res.status_code == 200
         payload = json.loads(call_res.json()["result"]["content"][0]["text"])
         assert payload["completion_status"] in {"COMPLETED", "BLOCKED"}
+        assert payload["secure_sandbox_execution_scope"] in {
+            "IDENTITY_BOUNDARY_SMOKE_ONLY",
+            "NOT_RUN",
+        }
+        assert payload["candidate_mechanism_executed_in_secure_sandbox"] is False
         if payload["completion_status"] == "BLOCKED":
             assert payload["status"] == "blocked"
             assert payload["workflow_status"] != "COMPLETED"

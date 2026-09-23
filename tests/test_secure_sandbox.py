@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+
 import supra_agentic.sandbox as sandbox_module
 from supra_agentic.sandbox import (
     DockerSandboxConfig,
@@ -70,6 +71,8 @@ def test_secure_docker_command_enforces_isolation_controls(
     assert receipt.image_id == image_id
     assert receipt.protocol_version is not None
     assert receipt.protocol_version.startswith("sha256:")
+    assert receipt.execution_scope == "IDENTITY_BOUNDARY_SMOKE_ONLY"
+    assert receipt.candidate_mechanism_executed is False
     assert receipt.scientific_validation is False
 
     assert len(calls) == 2
@@ -140,7 +143,6 @@ def test_sandbox_source_contains_no_in_process_exec_fallback() -> None:
     assert "eval(" not in source
     assert "--network=none" in source
     assert "--pull=never" in source
-
 
 
 def test_secure_sandbox_runtime_race_fails_closed(

@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .dossier import export_full_html_dossier
 from .mcp_handler import handle_mcp_jsonrpc_request
+from .models import ProjectPosture
 from .providers import ProviderError, get_provider, provider_names
 from .runner import TaskmasterRunner, taskmaster_runner
 from .state import state_manager, validate_project_id
@@ -29,12 +30,24 @@ logger = logging.getLogger("supra_agentic.service")
 def _secure_sandbox_status(posture: ProjectPosture) -> str:
     latest = posture.secure_sandbox_results[-1] if posture.secure_sandbox_results else None
     if latest and latest.passed and latest.identity_bound and latest.isolation_verified:
-        return "ISOLATED_BOUND_PASS"
+        return "IDENTITY_BOUND_ISOLATION_PASS"
     if latest and latest.identity_bound and latest.isolation_verified:
-        return "ISOLATED_BOUND_FAIL"
+        return "IDENTITY_BOUND_ISOLATION_FAIL"
     if latest:
         return "UNVERIFIED_ISOLATION"
     return "NOT_RUN"
+
+
+def _secure_sandbox_scope(posture: ProjectPosture) -> str:
+    latest = posture.secure_sandbox_results[-1] if posture.secure_sandbox_results else None
+    return latest.execution_scope if latest else "NOT_RUN"
+
+
+def _candidate_mechanism_executed_in_secure_sandbox(posture: ProjectPosture) -> bool:
+    latest = posture.secure_sandbox_results[-1] if posture.secure_sandbox_results else None
+    return bool(latest and latest.candidate_mechanism_executed)
+
+
 MAX_MCP_BODY_SIZE = 8 * 1024 * 1024
 
 
@@ -93,6 +106,7 @@ if CORS_ORIGINS:
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type", "X-API-Key"],
     )
+
 
 @app.middleware("http")
 async def enforce_api_auth(request: Request, call_next):
@@ -274,6 +288,10 @@ def create_and_run_project(req: CreateProjectRequest) -> dict[str, Any] | Respon
                 posture.verification.verdict if posture.verification else "NOT_EVALUATED"
             ),
             "secure_sandbox_status": _secure_sandbox_status(posture),
+            "secure_sandbox_execution_scope": _secure_sandbox_scope(posture),
+            "candidate_mechanism_executed_in_secure_sandbox": (
+                _candidate_mechanism_executed_in_secure_sandbox(posture)
+            ),
             "verification_scope": (
                 posture.verification.verification_scope
                 if posture.verification
@@ -380,6 +398,10 @@ def example_quick_run() -> dict[str, Any]:
             posture.verification.verdict if posture.verification else "NOT_EVALUATED"
         ),
         "secure_sandbox_status": _secure_sandbox_status(posture),
+        "secure_sandbox_execution_scope": _secure_sandbox_scope(posture),
+        "candidate_mechanism_executed_in_secure_sandbox": (
+            _candidate_mechanism_executed_in_secure_sandbox(posture)
+        ),
         "scientific_status": (
             (posture.final_output or {}).get("scientific_status", "NOT_VALIDATED")
         ),
