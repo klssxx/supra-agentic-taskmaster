@@ -6,6 +6,7 @@ import pytest
 
 from supra_agentic.models import (
     RESTRICTED_EXECUTION_SEMANTICS_VERSION,
+    ProjectPosture,
     SECURE_SANDBOX_SEMANTICS_VERSION,
     RestrictedExecutionResult,
     SecureSandboxResult,
@@ -579,6 +580,17 @@ def test_candidate_mechanism_revision_cannot_reuse_prior_completion_evidence() -
             {"workflow_status": "COMPLETED"},
         )
         assert completed.stage == TaskmasterStage.COMPLETED
+
+        legacy_payload = completed.model_dump()
+        verification_payload = legacy_payload["verification"]
+        assert isinstance(verification_payload, dict)
+        verification_payload.pop("mechanism_version", None)
+        verification_payload.pop("claim_id", None)
+        reloaded = ProjectPosture.model_validate(legacy_payload)
+        assert reloaded.stage == TaskmasterStage.SECURE_SANDBOX_VERIFIED
+        assert reloaded.final_output is not None
+        assert reloaded.final_output["workflow_status"] == "BLOCKED"
+        assert reloaded.final_output["completion_status"] == "BLOCKED"
 
 
 @pytest.mark.parametrize(
