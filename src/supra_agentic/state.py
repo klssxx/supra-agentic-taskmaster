@@ -45,6 +45,53 @@ def validate_project_id(project_id: str) -> str:
     return project_id
 
 
+def _verification_matches_identity(
+    report: VerificationReport | None,
+    expected: dict[str, str] | None,
+) -> bool:
+    return bool(
+        report is not None
+        and expected is not None
+        and report.candidate_id == expected["candidate_id"]
+        and report.mechanism_version == expected["mechanism_version"]
+        and report.claim_id == expected["claim_id"]
+    )
+
+
+def _restricted_matches_identity(
+    result: RestrictedExecutionResult | None,
+    expected: dict[str, str] | None,
+) -> bool:
+    return bool(
+        result is not None
+        and result.identity_bound
+        and expected is not None
+        and result.candidate_id == expected["candidate_id"]
+        and result.mechanism_version == expected["mechanism_version"]
+        and result.claim_id == expected["claim_id"]
+        and isinstance(result.protocol_version, str)
+        and result.protocol_version.startswith("sha256:")
+    )
+
+
+def _sandbox_matches_identity(
+    result: SecureSandboxResult | None,
+    expected: dict[str, str] | None,
+) -> bool:
+    return bool(
+        result is not None
+        and result.identity_bound
+        and expected is not None
+        and result.candidate_id == expected["candidate_id"]
+        and result.mechanism_version == expected["mechanism_version"]
+        and result.claim_id == expected["claim_id"]
+        and isinstance(result.protocol_version, str)
+        and result.protocol_version.startswith("sha256:")
+        and isinstance(result.image_id, str)
+        and result.image_id.startswith("sha256:")
+    )
+
+
 def _get_storage_configuration(
     explicit: Path | str | None = None,
 ) -> tuple[Path, str]:
@@ -145,6 +192,11 @@ class ProjectStateManager:
         """Store strategy candidates and advance stage to STRATIFIED."""
         with self._lock:
             p = self._get_required_project(project_id)
+            previous_identity = (
+                candidate_execution_identity(p.selected_candidate)
+                if p.selected_candidate is not None
+                else None
+            )
             p.candidates = candidates
             if select_best and candidates:
                 # Select candidate with highest combined feasibility + divergence score
@@ -153,6 +205,22 @@ class ProjectStateManager:
                 )
                 best.is_selected = True
                 p.selected_candidate = best
+
+            current_identity = (
+                candidate_execution_identity(p.selected_candidate)
+                if p.selected_candidate is not None
+                else None
+            )
+            if previous_identity is not None and previous_identity != current_identity:
+                if not _verification_matches_identity(p.verification, current_identity):
+                    p.verification = None
+                if p.final_output is not None:
+                    output = dict(p.final_output)
+                    output["workflow_status"] = "BLOCKED"
+                    output["completion_status"] = "BLOCKED"
+                    output["derived_completion_state_revalidated"] = True
+                    p.final_output = output
+
             p.stage = TaskmasterStage.STRATIFIED
             p.updated_at = time.time()
             sel_name = p.selected_candidate.pathway_name if p.selected_candidate else "None"
@@ -171,6 +239,17 @@ class ProjectStateManager:
         """Store verification report."""
         with self._lock:
             p = self._get_required_project(project_id)
+            candidate = next(
+                (item for item in p.candidates if item.candidate_id == report.candidate_id),
+                None,
+            )
+            expected = (
+                candidate_execution_identity(candidate) if candidate is not None else None
+            )
+            if not _verification_matches_identity(report, expected):
+                raise ValueError(
+                    "verification report identity does not match a current candidate mechanism"
+                )
             p.verification = report
             p.updated_at = time.time()
             p.checkpoints.append(
@@ -370,8 +449,18 @@ class ProjectStateManager:
         """Complete only when verification, preflight, and identity-bound isolation gates pass."""
         with self._lock:
             p = self._get_required_project(project_id)
+            expected = (
+                candidate_execution_identity(p.selected_candidate)
+                if p.selected_candidate is not None
+                else None
+            )
+            verification_identity_matches = _verification_matches_identity(
+                p.verification, expected
+            )
             verification_status = (
-                str(p.verification.verdict) if p.verification else "NOT_EVALUATED"
+                str(p.verification.verdict)
+                if p.verification is not None and verification_identity_matches
+                else "NOT_EVALUATED"
             )
             latest_execution = (
                 p.restricted_execution_results[-1]
@@ -381,34 +470,45 @@ class ProjectStateManager:
             latest_sandbox = (
                 p.secure_sandbox_results[-1] if p.secure_sandbox_results else None
             )
+            execution_identity_matches = _restricted_matches_identity(
+                latest_execution, expected
+            )
+            sandbox_identity_matches = _sandbox_matches_identity(
+                latest_sandbox, expected
+            )
+            execution_gate = bool(
+                latest_execution
+                and latest_execution.passed
+                and execution_identity_matches
+            )
+            sandbox_gate = bool(
+                latest_sandbox
+                and latest_sandbox.passed
+                and sandbox_identity_matches
+                and latest_sandbox.isolation_verified
+            )
             execution_status = (
                 "BOUND_PASS"
-                if latest_execution
-                and latest_execution.passed
-                and latest_execution.identity_bound
+                if execution_gate
                 else "BOUND_FAIL"
-                if latest_execution and latest_execution.identity_bound
+                if execution_identity_matches
                 else "UNBOUND"
                 if latest_execution
                 else "NOT_RUN"
             )
             sandbox_status = (
                 "IDENTITY_BOUND_ISOLATION_PASS"
-                if latest_sandbox
-                and latest_sandbox.passed
-                and latest_sandbox.identity_bound
-                and latest_sandbox.isolation_verified
+                if sandbox_gate
                 else "IDENTITY_BOUND_ISOLATION_FAIL"
-                if latest_sandbox
-                and latest_sandbox.identity_bound
-                and latest_sandbox.isolation_verified
+                if sandbox_identity_matches and latest_sandbox.isolation_verified
                 else "UNVERIFIED_ISOLATION"
                 if latest_sandbox
                 else "NOT_RUN"
             )
-            verification_gate = verification_status in {"PASS", "CONDITIONAL_PASS"}
-            execution_gate = execution_status == "BOUND_PASS"
-            sandbox_gate = sandbox_status == "IDENTITY_BOUND_ISOLATION_PASS"
+            verification_gate = (
+                verification_identity_matches
+                and verification_status in {"PASS", "CONDITIONAL_PASS"}
+            )
             if not verification_gate or not execution_gate or not sandbox_gate:
                 p.updated_at = time.time()
                 p.checkpoints.append(

@@ -312,8 +312,11 @@ def verify_solution(
             f"{len(not_evaluated)} NOT_EVALUATED."
         )
 
+    verification_identity = candidate_execution_identity(target_candidate)
     report = VerificationReport(
         candidate_id=target_candidate.candidate_id,
+        mechanism_version=verification_identity["mechanism_version"],
+        claim_id=verification_identity["claim_id"],
         invariants_preserved=invariants_preserved,
         invariants_checked=invariants,
         vulnerabilities_detected=[f["invariant"] for f in failures],

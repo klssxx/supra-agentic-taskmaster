@@ -95,6 +95,8 @@ class VerificationReport(BaseModel):
     model_config = ConfigDict(extra="forbid")
     report_id: str = Field(default_factory=lambda: f"rep-{uuid.uuid4().hex[:6]}")
     candidate_id: str
+    mechanism_version: str | None = None
+    claim_id: str | None = None
     invariants_preserved: bool = False
     invariants_checked: list[str] = Field(default_factory=list)
     vulnerabilities_detected: list[str] = Field(default_factory=list)
@@ -392,8 +394,10 @@ class ProjectPosture(BaseModel):
         )
         verification_gate = bool(
             self.verification is not None
-            and self.selected_candidate is not None
-            and self.verification.candidate_id == self.selected_candidate.candidate_id
+            and expected is not None
+            and self.verification.candidate_id == expected["candidate_id"]
+            and self.verification.mechanism_version == expected["mechanism_version"]
+            and self.verification.claim_id == expected["claim_id"]
             and self.verification.verdict in {"PASS", "CONDITIONAL_PASS"}
         )
 
