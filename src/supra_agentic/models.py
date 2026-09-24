@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import time
 import uuid
 from enum import Enum
@@ -13,6 +14,13 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, 
 
 RESTRICTED_EXECUTION_SEMANTICS_VERSION = 2
 SECURE_SANDBOX_SEMANTICS_VERSION = 1
+
+_SHA256_REF_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+
+
+def is_sha256_ref(value: object) -> bool:
+    """Return True only for canonical lowercase sha256:<64 hex> references."""
+    return isinstance(value, str) and _SHA256_REF_RE.fullmatch(value) is not None
 
 
 class TaskmasterStage(str, Enum):
@@ -166,7 +174,9 @@ class RestrictedExecutionResult(BaseModel):
             )
         )
         self.identity_bound = bool(
-            complete and self.execution_semantics_version == RESTRICTED_EXECUTION_SEMANTICS_VERSION
+            complete
+            and is_sha256_ref(self.protocol_version)
+            and self.execution_semantics_version == RESTRICTED_EXECUTION_SEMANTICS_VERSION
         )
         return self
 
@@ -235,13 +245,8 @@ class SecureSandboxResult(BaseModel):
                 self.execution_id,
             )
         )
-        protocol_bound = bool(
-            isinstance(self.protocol_version, str)
-            and self.protocol_version.startswith("sha256:")
-        )
-        image_bound = bool(
-            isinstance(self.image_id, str) and self.image_id.startswith("sha256:")
-        )
+        protocol_bound = is_sha256_ref(self.protocol_version)
+        image_bound = is_sha256_ref(self.image_id)
         self.identity_bound = bool(
             identity_complete
             and protocol_bound
@@ -358,8 +363,7 @@ class ProjectPosture(BaseModel):
                 and restricted_result.candidate_id == expected["candidate_id"]
                 and restricted_result.mechanism_version == expected["mechanism_version"]
                 and restricted_result.claim_id == expected["claim_id"]
-                and isinstance(restricted_result.protocol_version, str)
-                and restricted_result.protocol_version.startswith("sha256:")
+                and is_sha256_ref(restricted_result.protocol_version)
             )
 
         for sandbox_result in self.secure_sandbox_results:
@@ -369,10 +373,8 @@ class ProjectPosture(BaseModel):
                 and sandbox_result.candidate_id == expected["candidate_id"]
                 and sandbox_result.mechanism_version == expected["mechanism_version"]
                 and sandbox_result.claim_id == expected["claim_id"]
-                and isinstance(sandbox_result.protocol_version, str)
-                and sandbox_result.protocol_version.startswith("sha256:")
-                and isinstance(sandbox_result.image_id, str)
-                and sandbox_result.image_id.startswith("sha256:")
+                and is_sha256_ref(sandbox_result.protocol_version)
+                and is_sha256_ref(sandbox_result.image_id)
             )
 
         latest_execution = (
