@@ -31,7 +31,7 @@ def test_serve_ui():
     response = client.get("/")
     assert response.status_code == 200
     assert "SUPRA" in response.text
-    assert "What do you want to solve?" in response.text
+    assert "Causal Intelligence Workbench" in response.text\n    assert "Define un objetivo para SUPRA" in response.text
 
 
 def test_quick_run_example():
