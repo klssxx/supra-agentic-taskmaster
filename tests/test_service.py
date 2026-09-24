@@ -269,7 +269,10 @@ def test_create_project_persists_criba_dossier_as_planning_receipt() -> None:
         assert receipt["execution_status"] == "NOT_EXECUTED"
         assert receipt["scientific_status"] == "NOT_VALIDATED"
         assert receipt["criba_candidate_id"] == "cand-thermal-1"
-        assert receipt["alternativa_explicativa"] == "Ambient temperature stabilization alone"
+        assert (
+            receipt["alternativa_explicativa"]
+            == "Ambient temperature stabilization alone"
+        )
         assert receipt["intervencion_prueba"] == (
             "Compare calibrated vs baseline runs under load"
         )
