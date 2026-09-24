@@ -594,6 +594,7 @@ class ProjectPosture(BaseModel):
     stage: TaskmasterStage
     created_at: float
     updated_at: float
+    criba_dossier_receipt: dict[str, Any] | None = None
     decomposition: StructuredDecomposition | None = None
     candidates: list[StrategyCandidate] = Field(default_factory=list)
     selected_candidate: StrategyCandidate | None = None
@@ -603,3 +604,39 @@ class ProjectPosture(BaseModel):
     checkpoints: list[CheckpointRecord] = Field(default_factory=list)
     final_output: dict[str, Any] | None = None
     error_message: str | None = None
+
+    @field_validator("criba_dossier_receipt")
+    @classmethod
+    def validate_criba_dossier_receipt(
+        cls, value: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        """Persist CRIBA planning input without promoting it to execution evidence."""
+        if value is None:
+            return None
+        receipt = dict(value)
+        if receipt.get("receipt_scope") != "PLANNED_DISCRIMINANT_PROTOCOL_ONLY":
+            raise ValueError("CRIBA dossier receipt has invalid scope")
+        if receipt.get("execution_status") != "NOT_EXECUTED":
+            raise ValueError("CRIBA dossier receipt cannot claim execution")
+        if receipt.get("scientific_status") != "NOT_VALIDATED":
+            raise ValueError("CRIBA dossier receipt cannot claim scientific validation")
+        required = (
+            "criba_dossier_id",
+            "criba_candidate_id",
+            "claim_id",
+            "mechanism_version",
+            "protocol_version",
+            "alternativa_explicativa",
+            "intervencion_prueba",
+            "observable",
+            "resultado_favorable_mecanismo",
+            "resultado_favorable_alternativa",
+            "regla_decision",
+            "condicion_fracaso",
+        )
+        if not all(
+            isinstance(receipt.get(field), str) and receipt[field].strip()
+            for field in required
+        ):
+            raise ValueError("CRIBA dossier receipt is incomplete")
+        return receipt

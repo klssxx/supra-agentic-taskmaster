@@ -211,3 +211,88 @@ def test_html_dossier_escapes_dynamic_content() -> None:
     html = export_full_html_dossier(posture)
     assert '<script>alert("x")</script>' not in html
     assert "&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;" in html
+
+
+def _complete_criba_dossier_payload() -> dict:
+    return {
+        "dossier_id": "dossier-0123456789abcdef0123456789abcdef",
+        "candidate_id": "cand-thermal-1",
+        "run_id": "",
+        "claim_id": "claim-thermal-1",
+        "protocol_version": "sha256:" + "a" * 64,
+        "mechanism_version": "sha256:" + "b" * 64,
+        "problema": "Reduce thermal drift in sensor",
+        "bloqueo": "",
+        "origen_bloqueo": "",
+        "hipotesis": "Bounded calibration loop reduces thermal drift",
+        "mecanismo": "Closed-loop correction with 5ms window",
+        "evidence_delivered": [],
+        "evidence_documented_as_used": [],
+        "evidencia_utilizada": [],
+        "prueba_discriminante": {
+            "afirmacion_decisiva": "Compare calibrated vs baseline runs under load",
+            "alternativa_explicativa": "Ambient temperature stabilization alone",
+            "intervencion_prueba": "Compare calibrated vs baseline runs under load",
+            "observable": "temperature-adjusted error over 1h",
+            "comparacion": "Compare the two preregistered rival predictions",
+            "metrica": "temperature-adjusted error over 1h",
+            "resultado_favorable_mecanismo": "drift < 0.1C sustained",
+            "resultado_favorable_alternativa": "drift reduction from ambient alone",
+            "regla_decision": "prefer mechanism when drift separation > 0.05C",
+            "condicion_fracaso": "no measurable separation between arms",
+            "coste_permisos": "review before execution",
+            "estado_prueba": "NO_EJECUTADA",
+        },
+        "supuestos": [],
+        "estado": "SUPRA_EJECUCION_PENDIENTE",
+        "creado_at": "2026-09-25T00:00:00+00:00",
+    }
+
+
+def test_create_project_persists_criba_dossier_as_planning_receipt() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        state_manager.storage_dir = type(state_manager.storage_dir)(tmpdir)
+
+        response = client.post(
+            "/api/v1/projects",
+            json={
+                "objective": "Evaluate a bounded thermal calibration mechanism",
+                "domain": "thermal_engineering",
+                "allow_disruptive": False,
+                "criba_dossier": _complete_criba_dossier_payload(),
+            },
+        )
+
+        assert response.status_code == 201
+        receipt = response.json()["posture"]["criba_dossier_receipt"]
+        assert receipt["receipt_scope"] == "PLANNED_DISCRIMINANT_PROTOCOL_ONLY"
+        assert receipt["execution_status"] == "NOT_EXECUTED"
+        assert receipt["scientific_status"] == "NOT_VALIDATED"
+        assert receipt["criba_candidate_id"] == "cand-thermal-1"
+        assert (
+            receipt["alternativa_explicativa"]
+            == "Ambient temperature stabilization alone"
+        )
+        assert receipt["intervencion_prueba"] == (
+            "Compare calibrated vs baseline runs under load"
+        )
+        assert receipt["observable"] == "temperature-adjusted error over 1h"
+        assert receipt["resultado_favorable_mecanismo"] == "drift < 0.1C sustained"
+        assert receipt["resultado_favorable_alternativa"] == (
+            "drift reduction from ambient alone"
+        )
+
+
+def test_create_project_rejects_incomplete_criba_discriminant_protocol() -> None:
+    payload = _complete_criba_dossier_payload()
+    payload["prueba_discriminante"]["alternativa_explicativa"] = ""
+
+    response = client.post(
+        "/api/v1/projects",
+        json={
+            "objective": "Reject incomplete CRIBA discriminant protocol",
+            "criba_dossier": payload,
+        },
+    )
+
+    assert response.status_code == 422
