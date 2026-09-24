@@ -5,9 +5,8 @@ from __future__ import annotations
 import tempfile
 
 import pytest
-from pydantic import ValidationError
-
 import supra_agentic.runner as runner_module
+from pydantic import ValidationError
 from supra_agentic.models import (
     SECURE_SANDBOX_SEMANTICS_VERSION,
     ProjectPosture,
@@ -50,10 +49,13 @@ def _prepare_completion_fixture(posture: ProjectPosture) -> None:
     """Install explicit test-only completion evidence; never used by product code."""
     selected = posture.selected_candidate
     assert selected is not None
+    identity = candidate_execution_identity(selected)
     state_manager.record_verification(
         posture.project_id,
         VerificationReport(
-            candidate_id=selected.candidate_id,
+            candidate_id=identity["candidate_id"],
+            mechanism_version=identity["mechanism_version"],
+            claim_id=identity["claim_id"],
             invariants_preserved=True,
             invariants_checked=["test-fixture completion invariant"],
             vulnerabilities_detected=[],
@@ -67,7 +69,6 @@ def _prepare_completion_fixture(posture: ProjectPosture) -> None:
     assert result["passed"] is True
     assert result["identity_bound"] is True
 
-    identity = candidate_execution_identity(selected)
     secure = SecureSandboxResult(
         execution_semantics_version=SECURE_SANDBOX_SEMANTICS_VERSION,
         candidate_id=identity["candidate_id"],

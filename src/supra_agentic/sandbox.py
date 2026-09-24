@@ -14,9 +14,9 @@ import shutil
 import subprocess
 import tempfile
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
 
 from .models import (
     SECURE_SANDBOX_SEMANTICS_VERSION,
@@ -26,6 +26,7 @@ from .models import (
 _IMAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/@:-]{0,199}$")
 MAX_SANDBOX_CODE_BYTES = 64 * 1024
 MAX_SANDBOX_OUTPUT_CHARS = 16_384
+SECURE_SANDBOX_SUCCESS_MARKER = "SUPRA_SECURE_SANDBOX_OK"
 
 
 class SandboxUnavailableError(RuntimeError):
@@ -41,7 +42,7 @@ class DockerSandboxConfig:
     pids_limit: int = 64
 
     @classmethod
-    def from_env(cls) -> "DockerSandboxConfig":
+    def from_env(cls) -> DockerSandboxConfig:
         image = os.getenv("SUPRA_SANDBOX_IMAGE", "").strip()
         if not image:
             raise SandboxUnavailableError(
@@ -72,17 +73,19 @@ def sandbox_protocol_version(
     code: str,
     config: DockerSandboxConfig,
     image_id: str,
+    expected_output_marker: str | None = None,
 ) -> str:
     """Bind the receipt to code, immutable image identity, and isolation config."""
     payload = "\n".join(
         [
-            "supra-secure-docker-v1",
+            "supra-secure-docker-v2",
             config.image,
             image_id,
             str(config.timeout_seconds),
             str(config.memory_mb),
             str(config.cpus),
             str(config.pids_limit),
+            expected_output_marker or "",
             code,
         ]
     )
@@ -130,22 +133,23 @@ def run_python_in_secure_docker(
     *,
     identity: Mapping[str, str],
     config: DockerSandboxConfig | None = None,
+    expected_output_marker: str | None = None,
 ) -> SecureSandboxResult:
     """Run Python inside a constrained Docker container and return its receipt."""
     raw = code.encode("utf-8")
     if not raw or len(raw) > MAX_SANDBOX_CODE_BYTES:
-        raise ValueError(
-            f"sandbox code must be 1..{MAX_SANDBOX_CODE_BYTES} UTF-8 bytes"
-        )
+        raise ValueError(f"sandbox code must be 1..{MAX_SANDBOX_CODE_BYTES} UTF-8 bytes")
     required_identity = ("candidate_id", "mechanism_version", "claim_id")
     if any(not str(identity.get(key, "")).strip() for key in required_identity):
         raise ValueError("secure sandbox requires complete candidate identity")
+    if expected_output_marker is not None and not expected_output_marker.strip():
+        raise ValueError("expected_output_marker must be non-empty when provided")
 
     cfg = config or DockerSandboxConfig.from_env()
     cfg.validate()
     docker = _docker_binary()
     image_id = _ensure_image_present(docker, cfg)
-    protocol_version = sandbox_protocol_version(code, cfg, image_id)
+    protocol_version = sandbox_protocol_version(code, cfg, image_id, expected_output_marker)
 
     started = time.monotonic()
     with tempfile.TemporaryDirectory(prefix="supra-sandbox-") as tmpdir:
@@ -169,10 +173,10 @@ def run_python_in_secure_docker(
             f"--cpus={cfg.cpus}",
             "--ipc=none",
             "--tmpfs=/tmp:rw,noexec,nosuid,size=16m",
+            "--entrypoint=python",
             "--mount",
             f"type=bind,src={script},dst=/runner.py,readonly",
             image_id,
-            "python",
             "-I",
             "/runner.py",
         ]
@@ -185,10 +189,20 @@ def run_python_in_secure_docker(
                 timeout=cfg.timeout_seconds,
             )
             duration_ms = (time.monotonic() - started) * 1000
-            passed = result.returncode == 0
             stdout = _bounded(result.stdout or "")
             stderr = _bounded(result.stderr or "")
+            marker_seen = expected_output_marker is None or expected_output_marker in (
+                result.stdout or ""
+            )
+            passed = result.returncode == 0 and marker_seen
             output = stdout if passed else stderr or stdout
+            error_type = (
+                None
+                if passed
+                else "SandboxProcessFailure"
+                if result.returncode != 0
+                else "SandboxMarkerMissing"
+            )
             return SecureSandboxResult(
                 execution_semantics_version=SECURE_SANDBOX_SEMANTICS_VERSION,
                 candidate_id=identity["candidate_id"],
@@ -201,7 +215,7 @@ def run_python_in_secure_docker(
                 observed_result="PASS" if passed else "FAIL",
                 exit_code=result.returncode,
                 output_log=output,
-                error_type=None if passed else "SandboxProcessFailure",
+                error_type=error_type,
                 duration_ms=round(duration_ms, 2),
                 timed_out=False,
                 network_isolated=True,
@@ -241,6 +255,4 @@ def run_python_in_secure_docker(
                 resource_limits_applied=True,
             )
         except (OSError, subprocess.SubprocessError) as exc:
-            raise SandboxUnavailableError(
-                "Docker sandbox execution became unavailable"
-            ) from exc
+            raise SandboxUnavailableError("Docker sandbox execution became unavailable") from exc

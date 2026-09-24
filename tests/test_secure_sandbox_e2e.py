@@ -8,7 +8,6 @@ from __future__ import annotations
 import os
 
 import pytest
-
 from supra_agentic.models import TaskmasterStage, VerificationReport
 from supra_agentic.state import state_manager
 from supra_agentic.tools import (

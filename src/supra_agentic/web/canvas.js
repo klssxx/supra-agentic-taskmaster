@@ -13,8 +13,8 @@ class CausalCanvas {
             { id: 'inv', label: '01. Invariants', sub: 'Boundary Limits', x: 0.15, y: 0.5, color: '#4E75FF', radius: 36, status: 'STANDBY' },
             { id: 'strat_a', label: '02. Conservative', sub: 'Baseline Path', x: 0.45, y: 0.25, color: '#94A3B8', radius: 30, status: 'STANDBY' },
             { id: 'strat_b', label: '03. Orthogonal', sub: 'Decoupled Mesh', x: 0.45, y: 0.75, color: '#00FFCC', radius: 32, status: 'STANDBY' },
-            { id: 'sandbox', label: '04. AST Sandbox', sub: 'Synthetic Fuzz', x: 0.75, y: 0.5, color: '#10B981', radius: 34, status: 'STANDBY' },
-            { id: 'deliverable', label: '05. SHA-256', sub: 'Verified Ledger', x: 0.90, y: 0.5, color: '#00FFCC', radius: 28, status: 'STANDBY' }
+            { id: 'sandbox', label: '04–05. Gates', sub: 'Restricted + Docker', x: 0.75, y: 0.5, color: '#10B981', radius: 34, status: 'STANDBY' },
+            { id: 'deliverable', label: '06. SHA-256', sub: 'Payload Integrity', x: 0.90, y: 0.5, color: '#00FFCC', radius: 28, status: 'STANDBY' }
         ];
 
         this.links = [
@@ -86,11 +86,17 @@ class CausalCanvas {
             this.nodes[0].status = 'COMPLETED';
             this.nodes[1].status = 'ACTIVE';
             this.nodes[2].status = 'ACTIVE';
-        } else if (stage === 'SANDBOX_VERIFIED') {
+        } else if (stage === 'RESTRICTED_EXECUTION_VERIFIED') {
             this.nodes[0].status = 'COMPLETED';
             this.nodes[1].status = 'COMPLETED';
             this.nodes[2].status = 'COMPLETED';
             this.nodes[3].status = 'ACTIVE';
+        } else if (stage === 'SECURE_SANDBOX_VERIFIED') {
+            this.nodes[0].status = 'COMPLETED';
+            this.nodes[1].status = 'COMPLETED';
+            this.nodes[2].status = 'COMPLETED';
+            this.nodes[3].status = 'COMPLETED';
+            this.nodes[4].status = 'ACTIVE';
         } else if (stage === 'COMPLETED') {
             this.nodes.forEach(n => n.status = 'COMPLETED');
         }
@@ -183,7 +189,7 @@ class CausalCanvas {
 }
 
 // Instantiate on page load
-let causalCanvasInstance = null;
+window.causalCanvasInstance = null;
 document.addEventListener('DOMContentLoaded', () => {
-    causalCanvasInstance = new CausalCanvas('causal-dag-canvas');
+    window.causalCanvasInstance = new CausalCanvas('causal-dag-canvas');
 });

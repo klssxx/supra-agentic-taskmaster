@@ -169,6 +169,15 @@ def handle_mcp_jsonrpc_request(payload: Mapping[str, Any]) -> dict[str, Any]:
             "id": req_id,
             "error": {"code": -32600, "message": "Invalid Request: 'method' must be a string"},
         }
+    if not isinstance(params, Mapping):
+        return {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "error": {
+                "code": -32602,
+                "message": "Invalid params: params must be an object",
+            },
+        }
 
     try:
         if method == "initialize":
@@ -238,6 +247,15 @@ def handle_mcp_jsonrpc_request(payload: Mapping[str, Any]) -> dict[str, Any]:
         if method == "tools/call":
             tool_name = params.get("name")
             args = params.get("arguments", {})
+            if not isinstance(args, Mapping):
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {
+                        "code": -32602,
+                        "message": "Invalid params: arguments must be an object",
+                    },
+                }
 
             if tool_name == "supra_quick_run":
                 posture = taskmaster_runner.run_golden_path(

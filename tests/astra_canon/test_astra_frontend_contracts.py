@@ -67,3 +67,18 @@ def test_frontend_escapes_dynamic_html_and_project_ids() -> None:
     assert "encodeURIComponent(currentProjectId)" in app
     assert "encodeURIComponent(id)" in app
     assert 'onclick="loadProjectById' not in app
+
+
+def test_frontend_wires_current_restricted_and_secure_sandbox_stages() -> None:
+    app = _read("src/supra_agentic/web/app.js")
+    canvas = _read("src/supra_agentic/web/canvas.js")
+    index = _read("src/supra_agentic/web/index.html")
+
+    assert "'RESTRICTED_EXECUTION_VERIFIED': 3" in app
+    assert "'SECURE_SANDBOX_VERIFIED': 4" in app
+    assert "'COMPLETED': 5" in app
+    assert "step-sandbox" in index
+    assert "SECURE_SANDBOX_VERIFIED" in canvas
+    assert "SANDBOX_VERIFIED" not in canvas.replace("SECURE_SANDBOX_VERIFIED", "")
+    assert "Synthetic Fuzz" not in canvas
+    assert "window.causalCanvasInstance = new CausalCanvas" in canvas

@@ -128,7 +128,6 @@ async def enforce_api_auth(request: Request, call_next):
 
 
 STATIC_DIR = Path(__file__).parent / "web"
-STATIC_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 

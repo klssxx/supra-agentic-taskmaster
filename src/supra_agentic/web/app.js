@@ -68,26 +68,34 @@ function setUIState(status, stage, posture) {
     const stageTag = document.getElementById('current-stage-tag');
     stageTag.innerText = stage || status;
     
-    const steps = ['received', 'structured', 'stratified', 'restricted', 'completed'];
+    const steps = ['received', 'structured', 'stratified', 'restricted', 'sandbox', 'completed'];
     const stageOrder = {
         'RECEIVED': 0,
         'STRUCTURED': 1,
         'STRATIFIED': 2,
         'RESTRICTED_EXECUTION_VERIFIED': 3,
-        'COMPLETED': 4
+        'SECURE_SANDBOX_VERIFIED': 4,
+        'COMPLETED': 5
     };
 
     const currentIdx = stageOrder[stage] !== undefined ? stageOrder[stage] : 0;
-    const restrictedVerified = Boolean(
-        posture && posture.restricted_execution_results &&
-        posture.restricted_execution_results.some(r => r.passed && r.identity_bound)
+    const restrictedResults = posture && posture.restricted_execution_results || [];
+    const latestRestricted = restrictedResults[restrictedResults.length - 1];
+    const restrictedVerified = Boolean(latestRestricted && latestRestricted.passed && latestRestricted.identity_bound);
+    const sandboxResults = posture && posture.secure_sandbox_results || [];
+    const latestSandbox = sandboxResults[sandboxResults.length - 1];
+    const sandboxVerified = Boolean(
+        latestSandbox && latestSandbox.passed && latestSandbox.identity_bound && latestSandbox.isolation_verified
     );
 
     steps.forEach((s, idx) => {
         const el = document.getElementById(`step-${s}`);
         if (!el) return;
         el.classList.remove('active', 'completed');
-        if (s === 'restricted' && stage === 'COMPLETED' && !restrictedVerified) {
+        if (s === 'restricted' && idx <= currentIdx && !restrictedVerified) {
+            return;
+        }
+        if (s === 'sandbox' && idx <= currentIdx && !sandboxVerified) {
             return;
         }
         if (idx < currentIdx) {
@@ -110,6 +118,7 @@ function renderProjectPosture(posture) {
     const cand = posture.selected_candidate;
     const ver = posture.verification;
     const rex = posture.restricted_execution_results && posture.restricted_execution_results[posture.restricted_execution_results.length - 1];
+    const sbx = posture.secure_sandbox_results && posture.secure_sandbox_results[posture.secure_sandbox_results.length - 1];
     const out = posture.final_output;
 
     let html = `
@@ -160,6 +169,12 @@ function renderProjectPosture(posture) {
                 <div style="background: #000; padding: 0.5rem; border-radius: 4px; font-family: monospace; font-size: 0.75rem; color: #00FFCC; margin-top: 0.5rem;">
                     [RESTRICTED EXECUTION ${rex.passed ? 'PASS' : 'FAIL'} | IDENTITY ${rex.identity_bound ? 'BOUND' : 'UNBOUND'}]
                     ${escapeHtml(rex.output_log)} (${rex.duration_ms}ms)
+                </div>
+            ` : ''}
+            ${sbx ? `
+                <div style="background: #000; padding: 0.5rem; border-radius: 4px; font-family: monospace; font-size: 0.75rem; color: #4E75FF; margin-top: 0.5rem;">
+                    [SECURE SANDBOX ${sbx.passed && sbx.identity_bound && sbx.isolation_verified ? 'PASS' : 'BLOCKED'} | ${escapeHtml(sbx.execution_scope)}]
+                    Image: ${escapeHtml(sbx.image_id || 'NOT_AVAILABLE')} | Candidate mechanism executed: ${sbx.candidate_mechanism_executed ? 'YES' : 'NO'}
                 </div>
             ` : ''}
         </div>

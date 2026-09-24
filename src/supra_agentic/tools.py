@@ -27,7 +27,11 @@ from .models import (
     VerificationReport,
     candidate_execution_identity,
 )
-from .sandbox import SandboxUnavailableError, run_python_in_secure_docker
+from .sandbox import (
+    SECURE_SANDBOX_SUCCESS_MARKER,
+    SandboxUnavailableError,
+    run_python_in_secure_docker,
+)
 from .state import state_manager
 
 logger = logging.getLogger("supra_agentic.tools")
@@ -603,7 +607,7 @@ def _canonical_secure_sandbox_code(identity: dict[str, str]) -> str:
         "assert identity['candidate_id']\n"
         "assert identity['mechanism_version'].startswith('sha256:')\n"
         "assert identity['claim_id'].startswith('claim-')\n"
-        "print('SUPRA_SECURE_SANDBOX_OK')\n"
+        f"print({SECURE_SANDBOX_SUCCESS_MARKER!r})\n"
     )
 
 
@@ -622,7 +626,11 @@ def secure_sandbox_executor(project_id: str) -> dict[str, Any]:
     code = _canonical_secure_sandbox_code(identity)
     started = time.monotonic()
     try:
-        result = run_python_in_secure_docker(code, identity=identity)
+        result = run_python_in_secure_docker(
+            code,
+            identity=identity,
+            expected_output_marker=SECURE_SANDBOX_SUCCESS_MARKER,
+        )
     except (SandboxUnavailableError, ValueError, OSError) as exc:
         duration_ms = (time.monotonic() - started) * 1000
         result = SecureSandboxResult(
@@ -655,9 +663,7 @@ def secure_sandbox_executor(project_id: str) -> dict[str, Any]:
         "stage": posture.stage.value,
         "secure_sandbox_status": sandbox_status,
         "secure_sandbox_execution_scope": result.execution_scope,
-        "candidate_mechanism_executed_in_secure_sandbox": (
-            result.candidate_mechanism_executed
-        ),
+        "candidate_mechanism_executed_in_secure_sandbox": (result.candidate_mechanism_executed),
         "secure_sandbox_result": result.model_dump(),
     }
 
@@ -702,9 +708,7 @@ def record_checkpoint(
     latest_execution = (
         posture.restricted_execution_results[-1] if posture.restricted_execution_results else None
     )
-    latest_sandbox = (
-        posture.secure_sandbox_results[-1] if posture.secure_sandbox_results else None
-    )
+    latest_sandbox = posture.secure_sandbox_results[-1] if posture.secure_sandbox_results else None
     restricted_execution_status = (
         "BOUND_PASS"
         if latest_execution and latest_execution.passed and latest_execution.identity_bound
@@ -721,9 +725,7 @@ def record_checkpoint(
         and latest_sandbox.identity_bound
         and latest_sandbox.isolation_verified
         else "IDENTITY_BOUND_ISOLATION_FAIL"
-        if latest_sandbox
-        and latest_sandbox.identity_bound
-        and latest_sandbox.isolation_verified
+        if latest_sandbox and latest_sandbox.identity_bound and latest_sandbox.isolation_verified
         else "UNVERIFIED_ISOLATION"
         if latest_sandbox
         else "NOT_RUN"
@@ -795,9 +797,7 @@ def record_checkpoint(
             latest_execution and latest_execution.identity_bound
         ),
         "secure_sandbox_status": secure_sandbox_status,
-        "secure_sandbox_identity_bound": bool(
-            latest_sandbox and latest_sandbox.identity_bound
-        ),
+        "secure_sandbox_identity_bound": bool(latest_sandbox and latest_sandbox.identity_bound),
         "secure_sandbox_isolation_verified": bool(
             latest_sandbox and latest_sandbox.isolation_verified
         ),

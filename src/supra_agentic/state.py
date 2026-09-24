@@ -243,9 +243,7 @@ class ProjectStateManager:
                 (item for item in p.candidates if item.candidate_id == report.candidate_id),
                 None,
             )
-            expected = (
-                candidate_execution_identity(candidate) if candidate is not None else None
-            )
+            expected = candidate_execution_identity(candidate) if candidate is not None else None
             if not _verification_matches_identity(report, expected):
                 raise ValueError(
                     "verification report identity does not match a current candidate mechanism"
@@ -291,9 +289,7 @@ class ProjectStateManager:
             result.identity_bound = identity_matches
             p.restricted_execution_results.append(result)
 
-            latest_sandbox = (
-                p.secure_sandbox_results[-1] if p.secure_sandbox_results else None
-            )
+            latest_sandbox = p.secure_sandbox_results[-1] if p.secure_sandbox_results else None
             sandbox_gate = bool(
                 latest_sandbox
                 and latest_sandbox.passed
@@ -376,15 +372,11 @@ class ProjectStateManager:
                 and result.image_id.startswith("sha256:")
             )
             result.identity_bound = identity_matches
-            sandbox_gate = bool(
-                result.passed and identity_matches and result.isolation_verified
-            )
+            sandbox_gate = bool(result.passed and identity_matches and result.isolation_verified)
             p.secure_sandbox_results.append(result)
 
             latest_restricted = (
-                p.restricted_execution_results[-1]
-                if p.restricted_execution_results
-                else None
+                p.restricted_execution_results[-1] if p.restricted_execution_results else None
             )
             restricted_gate = bool(
                 latest_restricted
@@ -454,32 +446,20 @@ class ProjectStateManager:
                 if p.selected_candidate is not None
                 else None
             )
-            verification_identity_matches = _verification_matches_identity(
-                p.verification, expected
-            )
+            verification_identity_matches = _verification_matches_identity(p.verification, expected)
             verification_status = (
                 str(p.verification.verdict)
                 if p.verification is not None and verification_identity_matches
                 else "NOT_EVALUATED"
             )
             latest_execution = (
-                p.restricted_execution_results[-1]
-                if p.restricted_execution_results
-                else None
+                p.restricted_execution_results[-1] if p.restricted_execution_results else None
             )
-            latest_sandbox = (
-                p.secure_sandbox_results[-1] if p.secure_sandbox_results else None
-            )
-            execution_identity_matches = _restricted_matches_identity(
-                latest_execution, expected
-            )
-            sandbox_identity_matches = _sandbox_matches_identity(
-                latest_sandbox, expected
-            )
+            latest_sandbox = p.secure_sandbox_results[-1] if p.secure_sandbox_results else None
+            execution_identity_matches = _restricted_matches_identity(latest_execution, expected)
+            sandbox_identity_matches = _sandbox_matches_identity(latest_sandbox, expected)
             execution_gate = bool(
-                latest_execution
-                and latest_execution.passed
-                and execution_identity_matches
+                latest_execution and latest_execution.passed and execution_identity_matches
             )
             sandbox_gate = bool(
                 latest_sandbox
@@ -500,15 +480,17 @@ class ProjectStateManager:
                 "IDENTITY_BOUND_ISOLATION_PASS"
                 if sandbox_gate
                 else "IDENTITY_BOUND_ISOLATION_FAIL"
-                if sandbox_identity_matches and latest_sandbox.isolation_verified
+                if latest_sandbox is not None
+                and sandbox_identity_matches
+                and latest_sandbox.isolation_verified
                 else "UNVERIFIED_ISOLATION"
                 if latest_sandbox
                 else "NOT_RUN"
             )
-            verification_gate = (
-                verification_identity_matches
-                and verification_status in {"PASS", "CONDITIONAL_PASS"}
-            )
+            verification_gate = verification_identity_matches and verification_status in {
+                "PASS",
+                "CONDITIONAL_PASS",
+            }
             if not verification_gate or not execution_gate or not sandbox_gate:
                 p.updated_at = time.time()
                 p.checkpoints.append(
@@ -615,7 +597,12 @@ class ProjectStateManager:
         try:
             p_file = self.storage_dir / f"{project_id}.json"
             with tempfile.NamedTemporaryFile(
-                mode="w", dir=self.storage_dir, suffix=".tmp", delete=False
+                mode="w",
+                encoding="utf-8",
+                newline="\n",
+                dir=self.storage_dir,
+                suffix=".tmp",
+                delete=False,
             ) as tmp:
                 tmp.write(p.model_dump_json(indent=2))
                 tmp_path = Path(tmp.name)

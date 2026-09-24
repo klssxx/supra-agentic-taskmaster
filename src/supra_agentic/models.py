@@ -12,7 +12,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 RESTRICTED_EXECUTION_SEMANTICS_VERSION = 2
-SECURE_SANDBOX_SEMANTICS_VERSION = 1
+SECURE_SANDBOX_SEMANTICS_VERSION = 2
 
 
 class TaskmasterStage(str, Enum):
@@ -191,9 +191,7 @@ class SecureSandboxResult(BaseModel):
     image: str
     image_id: str | None = None
     action_type: Literal["SECURE_CONTAINER_PYTHON"] = "SECURE_CONTAINER_PYTHON"
-    execution_scope: Literal["IDENTITY_BOUNDARY_SMOKE_ONLY"] = (
-        "IDENTITY_BOUNDARY_SMOKE_ONLY"
-    )
+    execution_scope: Literal["IDENTITY_BOUNDARY_SMOKE_ONLY"] = "IDENTITY_BOUNDARY_SMOKE_ONLY"
     candidate_mechanism_executed: Literal[False] = False
     passed: bool
     observed_result: Literal["PASS", "FAIL", "UNKNOWN"]
@@ -224,7 +222,7 @@ class SecureSandboxResult(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def derive_security_and_identity(self) -> "SecureSandboxResult":
+    def derive_security_and_identity(self) -> SecureSandboxResult:
         identity_complete = all(
             isinstance(value, str) and bool(value.strip())
             for value in (
@@ -236,12 +234,9 @@ class SecureSandboxResult(BaseModel):
             )
         )
         protocol_bound = bool(
-            isinstance(self.protocol_version, str)
-            and self.protocol_version.startswith("sha256:")
+            isinstance(self.protocol_version, str) and self.protocol_version.startswith("sha256:")
         )
-        image_bound = bool(
-            isinstance(self.image_id, str) and self.image_id.startswith("sha256:")
-        )
+        image_bound = bool(isinstance(self.image_id, str) and self.image_id.startswith("sha256:"))
         self.identity_bound = bool(
             identity_complete
             and protocol_bound
@@ -343,7 +338,7 @@ class ProjectPosture(BaseModel):
         return migrated
 
     @model_validator(mode="after")
-    def revalidate_persisted_execution_accreditation(self) -> "ProjectPosture":
+    def revalidate_persisted_execution_accreditation(self) -> ProjectPosture:
         """Revalidate all completion-bearing gates on every load/restart."""
         expected = (
             candidate_execution_identity(self.selected_candidate)
@@ -376,13 +371,9 @@ class ProjectPosture(BaseModel):
             )
 
         latest_execution = (
-            self.restricted_execution_results[-1]
-            if self.restricted_execution_results
-            else None
+            self.restricted_execution_results[-1] if self.restricted_execution_results else None
         )
-        latest_sandbox = (
-            self.secure_sandbox_results[-1] if self.secure_sandbox_results else None
-        )
+        latest_sandbox = self.secure_sandbox_results[-1] if self.secure_sandbox_results else None
         restricted_gate = bool(
             latest_execution and latest_execution.passed and latest_execution.identity_bound
         )
@@ -441,10 +432,7 @@ class ProjectPosture(BaseModel):
             output["derived_execution_state_revalidated"] = True
             self.final_output = output
 
-        if (
-            self.stage is TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED
-            and not restricted_gate
-        ):
+        if self.stage is TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED and not restricted_gate:
             self.stage = (
                 TaskmasterStage.STRATIFIED
                 if self.selected_candidate is not None
@@ -464,10 +452,7 @@ class ProjectPosture(BaseModel):
                 )
             )
 
-        if (
-            self.stage is TaskmasterStage.SECURE_SANDBOX_VERIFIED
-            and not sandbox_gate
-        ):
+        if self.stage is TaskmasterStage.SECURE_SANDBOX_VERIFIED and not sandbox_gate:
             self.stage = (
                 TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED
                 if restricted_gate

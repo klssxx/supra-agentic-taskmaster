@@ -3,11 +3,10 @@
 import tempfile
 
 import pytest
-
 from supra_agentic.models import (
-    ProjectPosture,
     RESTRICTED_EXECUTION_SEMANTICS_VERSION,
     SECURE_SANDBOX_SEMANTICS_VERSION,
+    ProjectPosture,
     RestrictedExecutionResult,
     SecureSandboxResult,
     StrategyCandidate,
@@ -535,9 +534,7 @@ def test_candidate_mechanism_revision_cannot_reuse_prior_completion_evidence() -
             select_best=True,
         )
         assert revised_posture.selected_candidate is not None
-        revised_identity = candidate_execution_identity(
-            revised_posture.selected_candidate
-        )
+        revised_identity = candidate_execution_identity(revised_posture.selected_candidate)
         assert revised_identity["candidate_id"] == original_identity["candidate_id"]
         assert revised_identity["mechanism_version"] != original_identity["mechanism_version"]
         assert revised_posture.verification is None

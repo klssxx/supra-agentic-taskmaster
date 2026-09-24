@@ -56,12 +56,32 @@ def test_controlled_invalid_params_error_remains_specific() -> None:
     assert response["error"]["message"] == ("Invalid params: unsupported fields ['unsupported']")
 
 
+def test_non_object_mcp_params_and_arguments_are_invalid_params() -> None:
+    invalid_params = mcp_handler.handle_mcp_jsonrpc_request(
+        {"jsonrpc": "2.0", "id": 80, "method": "tools/call", "params": []}
+    )
+    invalid_arguments = mcp_handler.handle_mcp_jsonrpc_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 81,
+            "method": "tools/call",
+            "params": {"name": "supra_quick_run", "arguments": []},
+        }
+    )
+
+    assert invalid_params["error"] == {
+        "code": -32602,
+        "message": "Invalid params: params must be an object",
+    }
+    assert invalid_arguments["error"] == {
+        "code": -32602,
+        "message": "Invalid params: arguments must be an object",
+    }
+
 
 def test_secure_sandbox_mcp_tool_does_not_accept_remote_code() -> None:
     manifest = next(
-        item
-        for item in mcp_handler.MCP_TOOLS_MANIFEST
-        if item["name"] == "supra_secure_sandbox"
+        item for item in mcp_handler.MCP_TOOLS_MANIFEST if item["name"] == "supra_secure_sandbox"
     )
     schema = manifest["inputSchema"]
     assert schema["required"] == ["project_id"]
