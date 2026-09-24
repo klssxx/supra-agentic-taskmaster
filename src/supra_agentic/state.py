@@ -28,6 +28,7 @@ from .models import (
     TaskmasterStage,
     VerificationReport,
     candidate_execution_identity,
+    is_sha256_ref,
 )
 
 logger = logging.getLogger("supra_agentic.state")
@@ -69,8 +70,7 @@ def _restricted_matches_identity(
         and result.candidate_id == expected["candidate_id"]
         and result.mechanism_version == expected["mechanism_version"]
         and result.claim_id == expected["claim_id"]
-        and isinstance(result.protocol_version, str)
-        and result.protocol_version.startswith("sha256:")
+        and is_sha256_ref(result.protocol_version)
     )
 
 
@@ -85,8 +85,7 @@ def _sandbox_matches_identity(
         and result.candidate_id == expected["candidate_id"]
         and result.mechanism_version == expected["mechanism_version"]
         and result.claim_id == expected["claim_id"]
-        and isinstance(result.protocol_version, str)
-        and result.protocol_version.startswith("sha256:")
+        and is_sha256_ref(result.protocol_version)
         and isinstance(result.image_id, str)
         and result.image_id.startswith("sha256:")
     )
@@ -338,8 +337,7 @@ class ProjectStateManager:
                 and result.candidate_id == expected["candidate_id"]
                 and result.mechanism_version == expected["mechanism_version"]
                 and result.claim_id == expected["claim_id"]
-                and isinstance(result.protocol_version, str)
-                and result.protocol_version.startswith("sha256:")
+                and is_sha256_ref(result.protocol_version)
             )
             result.identity_bound = identity_matches
             p.restricted_execution_results.append(result)
@@ -423,8 +421,7 @@ class ProjectStateManager:
                 and result.candidate_id == expected["candidate_id"]
                 and result.mechanism_version == expected["mechanism_version"]
                 and result.claim_id == expected["claim_id"]
-                and isinstance(result.protocol_version, str)
-                and result.protocol_version.startswith("sha256:")
+                and is_sha256_ref(result.protocol_version)
                 and isinstance(result.image_id, str)
                 and result.image_id.startswith("sha256:")
             )
