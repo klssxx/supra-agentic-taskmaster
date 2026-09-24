@@ -251,6 +251,61 @@ class ProjectStateManager:
                     "verification report identity does not match a current candidate mechanism"
                 )
             p.verification = report
+
+            current_expected = (
+                candidate_execution_identity(p.selected_candidate)
+                if p.selected_candidate is not None
+                else None
+            )
+            current_verification_gate = bool(
+                _verification_matches_identity(report, current_expected)
+                and report.verdict in {"PASS", "CONDITIONAL_PASS"}
+            )
+            if p.stage is TaskmasterStage.COMPLETED and not current_verification_gate:
+                latest_execution = (
+                    p.restricted_execution_results[-1]
+                    if p.restricted_execution_results
+                    else None
+                )
+                latest_sandbox = (
+                    p.secure_sandbox_results[-1]
+                    if p.secure_sandbox_results
+                    else None
+                )
+                restricted_gate = bool(
+                    latest_execution
+                    and latest_execution.passed
+                    and _restricted_matches_identity(latest_execution, current_expected)
+                )
+                sandbox_gate = bool(
+                    latest_sandbox
+                    and latest_sandbox.passed
+                    and _sandbox_matches_identity(latest_sandbox, current_expected)
+                    and latest_sandbox.isolation_verified
+                )
+                p.stage = (
+                    TaskmasterStage.SECURE_SANDBOX_VERIFIED
+                    if sandbox_gate
+                    else TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED
+                    if restricted_gate
+                    else TaskmasterStage.STRATIFIED
+                    if p.selected_candidate is not None
+                    else TaskmasterStage.STRUCTURED
+                    if p.decomposition is not None
+                    else TaskmasterStage.RECEIVED
+                )
+                if p.final_output is not None:
+                    output = dict(p.final_output)
+                    output["workflow_status"] = "BLOCKED"
+                    output["completion_status"] = "BLOCKED"
+                    output["verification_status"] = (
+                        str(report.verdict)
+                        if _verification_matches_identity(report, current_expected)
+                        else "NOT_EVALUATED"
+                    )
+                    output["derived_completion_state_revalidated"] = True
+                    p.final_output = output
+
             p.updated_at = time.time()
             p.checkpoints.append(
                 CheckpointRecord(

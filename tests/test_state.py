@@ -613,3 +613,160 @@ def test_project_id_cannot_overwrite_existing_project() -> None:
         loaded = sm.get_project(original.project_id)
         assert loaded is not None
         assert loaded.objective == "first project"
+
+
+
+@pytest.mark.parametrize("verdict", ["FAIL", "NOT_EVALUATED"])
+def test_completed_project_is_immediately_downgraded_when_current_verification_regresses(
+    verdict: str,
+) -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        sm = ProjectStateManager(storage_dir=tmpdir)
+        p = sm.create_project(objective="current verification must control completion")
+        cand = StrategyCandidate(
+            pathway_name="Current Path",
+            paradigm_type="ORTHOGONAL",
+            hypothesis="Current bounded hypothesis",
+            action_plan=["bounded step"],
+            divergence_score=0.5,
+            feasibility_score=0.5,
+        )
+        posture = sm.add_candidates(p.project_id, [cand], select_best=True)
+        selected = posture.selected_candidate
+        assert selected is not None
+        identity = candidate_execution_identity(selected)
+
+        sm.record_verification(
+            p.project_id,
+            _verification_report(
+                selected,
+                invariants_preserved=True,
+                invariants_checked=["bounded"],
+                vulnerabilities_detected=[],
+                confidence_score=1.0,
+                verdict="PASS",
+                rationale="Initial current verification.",
+            ),
+        )
+        sm.record_restricted_execution(
+            p.project_id,
+            RestrictedExecutionResult(
+                candidate_id=identity["candidate_id"],
+                mechanism_version=identity["mechanism_version"],
+                claim_id=identity["claim_id"],
+                protocol_version="sha256:current-verification",
+                execution_semantics_version=RESTRICTED_EXECUTION_SEMANTICS_VERSION,
+                action_type="RESTRICTED_CODE_RUN",
+                passed=True,
+                output_log="pass",
+                duration_ms=1.0,
+            ),
+        )
+        sm.record_secure_sandbox_execution(p.project_id, _secure_result(identity))
+        completed = sm.complete_project(
+            p.project_id,
+            {"workflow_status": "COMPLETED"},
+        )
+        assert completed.stage is TaskmasterStage.COMPLETED
+
+        revised = sm.record_verification(
+            p.project_id,
+            _verification_report(
+                selected,
+                invariants_preserved=False,
+                invariants_checked=["bounded"],
+                vulnerabilities_detected=["regression"],
+                confidence_score=0.0,
+                verdict=verdict,
+                rationale="Current verification regressed.",
+            ),
+        )
+
+        assert revised.stage is TaskmasterStage.SECURE_SANDBOX_VERIFIED
+        assert revised.final_output is not None
+        assert revised.final_output["workflow_status"] == "BLOCKED"
+        assert revised.final_output["completion_status"] == "BLOCKED"
+        assert revised.final_output["verification_status"] == verdict
+        assert revised.final_output["derived_completion_state_revalidated"] is True
+
+
+def test_completed_project_is_immediately_downgraded_by_verification_for_other_candidate() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        sm = ProjectStateManager(storage_dir=tmpdir)
+        p = sm.create_project(objective="verification identity must remain current")
+        selected_candidate = StrategyCandidate(
+            pathway_name="Selected Path",
+            paradigm_type="ORTHOGONAL",
+            hypothesis="Selected bounded hypothesis",
+            action_plan=["selected step"],
+            divergence_score=0.9,
+            feasibility_score=0.9,
+        )
+        alternate_candidate = StrategyCandidate(
+            pathway_name="Alternate Path",
+            paradigm_type="CONSERVATIVE",
+            hypothesis="Alternate hypothesis",
+            action_plan=["alternate step"],
+            divergence_score=0.1,
+            feasibility_score=0.1,
+        )
+        posture = sm.add_candidates(
+            p.project_id,
+            [selected_candidate, alternate_candidate],
+            select_best=True,
+        )
+        selected = posture.selected_candidate
+        assert selected is not None
+        assert selected.candidate_id == selected_candidate.candidate_id
+        identity = candidate_execution_identity(selected)
+
+        sm.record_verification(
+            p.project_id,
+            _verification_report(
+                selected,
+                invariants_preserved=True,
+                invariants_checked=["bounded"],
+                vulnerabilities_detected=[],
+                confidence_score=1.0,
+                verdict="PASS",
+                rationale="Current selected verification.",
+            ),
+        )
+        sm.record_restricted_execution(
+            p.project_id,
+            RestrictedExecutionResult(
+                candidate_id=identity["candidate_id"],
+                mechanism_version=identity["mechanism_version"],
+                claim_id=identity["claim_id"],
+                protocol_version="sha256:selected-verification",
+                execution_semantics_version=RESTRICTED_EXECUTION_SEMANTICS_VERSION,
+                action_type="RESTRICTED_CODE_RUN",
+                passed=True,
+                output_log="pass",
+                duration_ms=1.0,
+            ),
+        )
+        sm.record_secure_sandbox_execution(p.project_id, _secure_result(identity))
+        assert sm.complete_project(
+            p.project_id,
+            {"workflow_status": "COMPLETED"},
+        ).stage is TaskmasterStage.COMPLETED
+
+        revised = sm.record_verification(
+            p.project_id,
+            _verification_report(
+                alternate_candidate,
+                invariants_preserved=True,
+                invariants_checked=["alternate"],
+                vulnerabilities_detected=[],
+                confidence_score=1.0,
+                verdict="PASS",
+                rationale="Valid report, but not for selected candidate.",
+            ),
+        )
+
+        assert revised.stage is TaskmasterStage.SECURE_SANDBOX_VERIFIED
+        assert revised.final_output is not None
+        assert revised.final_output["workflow_status"] == "BLOCKED"
+        assert revised.final_output["completion_status"] == "BLOCKED"
+        assert revised.final_output["verification_status"] == "NOT_EVALUATED"
