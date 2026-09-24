@@ -86,8 +86,7 @@ def _sandbox_matches_identity(
         and result.mechanism_version == expected["mechanism_version"]
         and result.claim_id == expected["claim_id"]
         and is_sha256_ref(result.protocol_version)
-        and isinstance(result.image_id, str)
-        and result.image_id.startswith("sha256:")
+        and is_sha256_ref(result.image_id)
     )
 
 
@@ -422,8 +421,7 @@ class ProjectStateManager:
                 and result.mechanism_version == expected["mechanism_version"]
                 and result.claim_id == expected["claim_id"]
                 and is_sha256_ref(result.protocol_version)
-                and isinstance(result.image_id, str)
-                and result.image_id.startswith("sha256:")
+                and is_sha256_ref(result.image_id)
             )
             result.identity_bound = identity_matches
             sandbox_gate = bool(
