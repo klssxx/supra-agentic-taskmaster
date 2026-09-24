@@ -9,7 +9,7 @@ import uuid
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
 
 RESTRICTED_EXECUTION_SEMANTICS_VERSION = 2
 SECURE_SANDBOX_SEMANTICS_VERSION = 1
@@ -126,16 +126,16 @@ class RestrictedExecutionResult(BaseModel):
     protocol_version: str | None = None
     observed_result: str | None = None
     action_type: str
-    passed: bool
+    passed: StrictBool
     output_log: str
     error_type: str | None = None
     duration_ms: float
-    side_effects_contained: bool = False
+    side_effects_contained: StrictBool = False
     execution_classification: str = "RESTRICTED_EXECUTION"
     result_scope: str = "RESTRICTED_EXECUTION_ONLY"
-    scientific_validation: bool = False
-    process_isolated: bool = False
-    secure_for_untrusted_code: bool = False
+    scientific_validation: StrictBool = False
+    process_isolated: StrictBool = False
+    secure_for_untrusted_code: StrictBool = False
     identity_bound: bool = False
     timestamp: float = Field(default_factory=time.time)
 
@@ -195,25 +195,25 @@ class SecureSandboxResult(BaseModel):
         "IDENTITY_BOUNDARY_SMOKE_ONLY"
     )
     candidate_mechanism_executed: Literal[False] = False
-    passed: bool
+    passed: StrictBool
     observed_result: Literal["PASS", "FAIL", "UNKNOWN"]
     exit_code: int | None = None
     output_log: str = ""
     error_type: str | None = None
     duration_ms: float = Field(ge=0.0)
-    timed_out: bool = False
-    network_isolated: bool = False
-    read_only_root: bool = False
-    capabilities_dropped: bool = False
-    no_new_privileges: bool = False
-    non_root_user: bool = False
-    resource_limits_applied: bool = False
+    timed_out: StrictBool = False
+    network_isolated: StrictBool = False
+    read_only_root: StrictBool = False
+    capabilities_dropped: StrictBool = False
+    no_new_privileges: StrictBool = False
+    non_root_user: StrictBool = False
+    resource_limits_applied: StrictBool = False
     identity_bound: bool = False
     isolation_verified: bool = False
     security_scope: Literal["CONTAINER_ISOLATION_CONTROLS_ONLY"] = (
         "CONTAINER_ISOLATION_CONTROLS_ONLY"
     )
-    scientific_validation: bool = False
+    scientific_validation: StrictBool = False
     timestamp: float = Field(default_factory=time.time)
 
     @field_validator("scientific_validation")
