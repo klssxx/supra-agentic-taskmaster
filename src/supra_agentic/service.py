@@ -9,7 +9,7 @@ import os
 import secrets
 from html import escape
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response, status
@@ -141,6 +141,70 @@ STATIC_DIR = Path(__file__).parent / "web"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
+class CribaDiscriminantProtocolRequest(BaseModel):
+    """Discriminant protocol prepared by CRIBA; receipt is not execution evidence."""
+
+    model_config = ConfigDict(extra="forbid")
+    afirmacion_decisiva: str = Field(..., min_length=1, max_length=600)
+    alternativa_explicativa: str = Field(..., min_length=1, max_length=1200)
+    intervencion_prueba: str = Field(..., min_length=1, max_length=600)
+    observable: str = Field(..., min_length=1, max_length=400)
+    comparacion: str = Field("", max_length=800)
+    metrica: str = Field("", max_length=400)
+    resultado_favorable_mecanismo: str = Field(..., min_length=1, max_length=400)
+    resultado_favorable_alternativa: str = Field(..., min_length=1, max_length=400)
+    regla_decision: str = Field(..., min_length=1, max_length=400)
+    condicion_fracaso: str = Field(..., min_length=1, max_length=400)
+    coste_permisos: str = Field("", max_length=400)
+    estado_prueba: Literal["NO_EJECUTADA"] = "NO_EJECUTADA"
+
+
+class CribaDossierRequest(BaseModel):
+    """Versioned CRIBA planning payload accepted by the project endpoint."""
+
+    model_config = ConfigDict(extra="forbid")
+    dossier_id: str = Field(..., min_length=1, max_length=128)
+    candidate_id: str = Field(..., min_length=1, max_length=256)
+    run_id: str = Field("", max_length=256)
+    claim_id: str = Field(..., min_length=1, max_length=256)
+    protocol_version: str = Field(..., pattern=r"^sha256:[0-9a-f]{64}$")
+    mechanism_version: str = Field(..., pattern=r"^sha256:[0-9a-f]{64}$")
+    problema: str = Field("", max_length=400)
+    bloqueo: str = Field("", max_length=1200)
+    origen_bloqueo: str = Field("", max_length=120)
+    hipotesis: str = Field("", max_length=800)
+    mecanismo: str = Field("", max_length=2000)
+    evidence_delivered: list[Any] = Field(default_factory=list)
+    evidence_documented_as_used: list[Any] = Field(default_factory=list)
+    evidencia_utilizada: list[Any] = Field(default_factory=list)
+    prueba_discriminante: CribaDiscriminantProtocolRequest
+    supuestos: list[Any] = Field(default_factory=list)
+    estado: Literal["SUPRA_EJECUCION_PENDIENTE"]
+    creado_at: str = Field("", max_length=80)
+
+
+def _criba_dossier_receipt(dossier: CribaDossierRequest) -> dict[str, Any]:
+    """Flatten only the discriminant planning facts SUPRA needs to preserve."""
+    protocol = dossier.prueba_discriminante
+    return {
+        "receipt_scope": "PLANNED_DISCRIMINANT_PROTOCOL_ONLY",
+        "execution_status": "NOT_EXECUTED",
+        "scientific_status": "NOT_VALIDATED",
+        "criba_dossier_id": dossier.dossier_id,
+        "criba_candidate_id": dossier.candidate_id,
+        "claim_id": dossier.claim_id,
+        "mechanism_version": dossier.mechanism_version,
+        "protocol_version": dossier.protocol_version,
+        "alternativa_explicativa": protocol.alternativa_explicativa,
+        "intervencion_prueba": protocol.intervencion_prueba,
+        "observable": protocol.observable,
+        "resultado_favorable_mecanismo": protocol.resultado_favorable_mecanismo,
+        "resultado_favorable_alternativa": protocol.resultado_favorable_alternativa,
+        "regla_decision": protocol.regla_decision,
+        "condicion_fracaso": protocol.condicion_fracaso,
+    }
+
+
 class CreateProjectRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     objective: str = Field(
@@ -164,6 +228,13 @@ class CreateProjectRequest(BaseModel):
     )
     use_model: bool = Field(
         False, description="Add optional model assistance without replacing deterministic gates."
+    )
+    criba_dossier: CribaDossierRequest | None = Field(
+        None,
+        description=(
+            "Optional CRIBA planning dossier. SUPRA preserves a receipt but does not "
+            "treat receipt as execution or scientific validation."
+        ),
     )
 
 
@@ -263,6 +334,11 @@ def create_and_run_project(req: CreateProjectRequest) -> dict[str, Any] | Respon
             domain=req.domain,
             allow_disruptive=req.allow_disruptive,
             use_model=req.use_model,
+            criba_dossier_receipt=(
+                _criba_dossier_receipt(req.criba_dossier)
+                if req.criba_dossier is not None
+                else None
+            ),
         )
 
         # Workflow failure and strategy-coverage verdict are different
