@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 WEB = Path(__file__).resolve().parents[1] / "src" / "supra_agentic" / "web"
 
 

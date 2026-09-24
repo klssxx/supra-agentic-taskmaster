@@ -13,7 +13,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
 
 RESTRICTED_EXECUTION_SEMANTICS_VERSION = 2
-SECURE_SANDBOX_SEMANTICS_VERSION = 1
+SECURE_SANDBOX_SEMANTICS_VERSION = 2
 
 _SHA256_REF_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 
@@ -95,6 +95,63 @@ def candidate_execution_identity(candidate: StrategyCandidate) -> dict[str, str]
         "claim_id": "claim-"
         + hashlib.sha256(candidate.hypothesis.encode("utf-8")).hexdigest()[:24],
     }
+
+
+def final_output_audit_sha256(payload: dict[str, Any]) -> str:
+    """Hash the serialized final payload while excluding the hash field itself."""
+    hashable = dict(payload)
+    hashable.pop("audit_sha256", None)
+    raw_bytes = json.dumps(hashable, sort_keys=True).encode("utf-8")
+    return hashlib.sha256(raw_bytes).hexdigest()
+
+
+def final_output_hash_matches(payload: dict[str, Any]) -> bool:
+    """Return whether an integrity-addressed payload still matches its SHA-256."""
+    recorded = payload.get("audit_sha256")
+    return bool(
+        isinstance(recorded, str)
+        and len(recorded) == 64
+        and recorded == final_output_audit_sha256(payload)
+    )
+
+
+def revise_final_output_payload(
+    current: dict[str, Any] | None,
+    updates: dict[str, Any],
+    *,
+    reason: str,
+) -> dict[str, Any] | None:
+    """Apply an authorized state revision and issue a replacement integrity hash."""
+    if current is None or all(current.get(key) == value for key, value in updates.items()):
+        return current
+    revised = dict(current)
+    previous_hash = revised.pop("audit_sha256", None)
+    if isinstance(previous_hash, str):
+        revised["superseded_audit_sha256"] = previous_hash
+    revised.update(updates)
+    revised["integrity_status"] = "CURRENT"
+    revised["integrity_revision_reason"] = reason
+    revised["audit_sha256"] = final_output_audit_sha256(revised)
+    return revised
+
+
+def invalidate_final_output_payload(
+    current: dict[str, Any] | None,
+    updates: dict[str, Any],
+    *,
+    reason: str,
+) -> dict[str, Any] | None:
+    """Apply load-time repairs without blessing altered bytes with a fresh hash."""
+    if current is None:
+        return None
+    invalidated = dict(current)
+    rejected_hash = invalidated.pop("audit_sha256", None)
+    if isinstance(rejected_hash, str):
+        invalidated["rejected_audit_sha256"] = rejected_hash
+    invalidated.update(updates)
+    invalidated["integrity_status"] = "INVALIDATED_BY_REVALIDATION"
+    invalidated["integrity_invalidation_reason"] = reason
+    return invalidated
 
 
 class VerificationReport(BaseModel):
@@ -201,9 +258,7 @@ class SecureSandboxResult(BaseModel):
     image: str
     image_id: str | None = None
     action_type: Literal["SECURE_CONTAINER_PYTHON"] = "SECURE_CONTAINER_PYTHON"
-    execution_scope: Literal["IDENTITY_BOUNDARY_SMOKE_ONLY"] = (
-        "IDENTITY_BOUNDARY_SMOKE_ONLY"
-    )
+    execution_scope: Literal["IDENTITY_BOUNDARY_SMOKE_ONLY"] = "IDENTITY_BOUNDARY_SMOKE_ONLY"
     candidate_mechanism_executed: Literal[False] = False
     passed: StrictBool
     observed_result: Literal["PASS", "FAIL", "UNKNOWN"]
@@ -234,7 +289,7 @@ class SecureSandboxResult(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def derive_security_and_identity(self) -> "SecureSandboxResult":
+    def derive_security_and_identity(self) -> SecureSandboxResult:
         identity_complete = all(
             isinstance(value, str) and bool(value.strip())
             for value in (
@@ -348,7 +403,7 @@ class ProjectPosture(BaseModel):
         return migrated
 
     @model_validator(mode="after")
-    def revalidate_persisted_execution_accreditation(self) -> "ProjectPosture":
+    def revalidate_persisted_execution_accreditation(self) -> ProjectPosture:
         """Revalidate all completion-bearing gates on every load/restart."""
         expected = (
             candidate_execution_identity(self.selected_candidate)
@@ -378,13 +433,9 @@ class ProjectPosture(BaseModel):
             )
 
         latest_execution = (
-            self.restricted_execution_results[-1]
-            if self.restricted_execution_results
-            else None
+            self.restricted_execution_results[-1] if self.restricted_execution_results else None
         )
-        latest_sandbox = (
-            self.secure_sandbox_results[-1] if self.secure_sandbox_results else None
-        )
+        latest_sandbox = self.secure_sandbox_results[-1] if self.secure_sandbox_results else None
         restricted_gate = bool(
             latest_execution and latest_execution.passed and latest_execution.identity_bound
         )
@@ -402,51 +453,68 @@ class ProjectPosture(BaseModel):
             and self.verification.claim_id == expected["claim_id"]
             and self.verification.verdict in {"PASS", "CONDITIONAL_PASS"}
         )
-
-        if self.final_output is not None:
-            output = dict(self.final_output)
-            output["restricted_execution_identity_bound"] = bool(
+        restricted_status = (
+            "BOUND_PASS"
+            if restricted_gate
+            else "BOUND_FAIL"
+            if latest_execution and latest_execution.identity_bound
+            else "UNBOUND"
+            if latest_execution
+            else "NOT_RUN"
+        )
+        sandbox_status = (
+            "IDENTITY_BOUND_ISOLATION_PASS"
+            if sandbox_gate
+            else "IDENTITY_BOUND_ISOLATION_FAIL"
+            if latest_sandbox
+            and latest_sandbox.identity_bound
+            and latest_sandbox.isolation_verified
+            else "UNVERIFIED_ISOLATION"
+            if latest_sandbox
+            else "NOT_RUN"
+        )
+        final_output_updates: dict[str, Any] = {
+            "verification_status": (
+                self.verification.verdict
+                if self.verification is not None
+                and expected is not None
+                and self.verification.candidate_id == expected["candidate_id"]
+                and self.verification.mechanism_version == expected["mechanism_version"]
+                and self.verification.claim_id == expected["claim_id"]
+                else "NOT_EVALUATED"
+            ),
+            "verification_verdict": (
+                self.verification.verdict
+                if self.verification is not None
+                and expected is not None
+                and self.verification.candidate_id == expected["candidate_id"]
+                and self.verification.mechanism_version == expected["mechanism_version"]
+                and self.verification.claim_id == expected["claim_id"]
+                else "NOT_EVALUATED"
+            ),
+            "restricted_execution_identity_bound": bool(
                 latest_execution and latest_execution.identity_bound
-            )
-            output["restricted_execution_status"] = (
-                "BOUND_PASS"
-                if restricted_gate
-                else "BOUND_FAIL"
-                if latest_execution and latest_execution.identity_bound
-                else "UNBOUND"
-                if latest_execution
-                else "NOT_RUN"
-            )
-            output["secure_sandbox_identity_bound"] = bool(
-                latest_sandbox and latest_sandbox.identity_bound
-            )
-            output["secure_sandbox_isolation_verified"] = bool(
+            ),
+            "restricted_execution_status": restricted_status,
+            "secure_sandbox_identity_bound": bool(latest_sandbox and latest_sandbox.identity_bound),
+            "secure_sandbox_isolation_verified": bool(
                 latest_sandbox and latest_sandbox.isolation_verified
-            )
-            output["secure_sandbox_execution_scope"] = (
+            ),
+            "secure_sandbox_execution_scope": (
                 latest_sandbox.execution_scope if latest_sandbox else "NOT_RUN"
-            )
-            output["candidate_mechanism_executed_in_secure_sandbox"] = bool(
+            ),
+            "candidate_mechanism_executed_in_secure_sandbox": bool(
                 latest_sandbox and latest_sandbox.candidate_mechanism_executed
-            )
-            output["secure_sandbox_status"] = (
-                "IDENTITY_BOUND_ISOLATION_PASS"
-                if sandbox_gate
-                else "IDENTITY_BOUND_ISOLATION_FAIL"
-                if latest_sandbox
-                and latest_sandbox.identity_bound
-                and latest_sandbox.isolation_verified
-                else "UNVERIFIED_ISOLATION"
-                if latest_sandbox
-                else "NOT_RUN"
-            )
-            output["derived_execution_state_revalidated"] = True
-            self.final_output = output
+            ),
+            "secure_sandbox_status": sandbox_status,
+        }
+        final_output_hash_mismatch = bool(
+            self.final_output is not None
+            and "audit_sha256" in self.final_output
+            and not final_output_hash_matches(self.final_output)
+        )
 
-        if (
-            self.stage is TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED
-            and not restricted_gate
-        ):
+        if self.stage is TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED and not restricted_gate:
             self.stage = (
                 TaskmasterStage.STRATIFIED
                 if self.selected_candidate is not None
@@ -466,10 +534,7 @@ class ProjectPosture(BaseModel):
                 )
             )
 
-        if (
-            self.stage is TaskmasterStage.SECURE_SANDBOX_VERIFIED
-            and not sandbox_gate
-        ):
+        if self.stage is TaskmasterStage.SECURE_SANDBOX_VERIFIED and not sandbox_gate:
             self.stage = (
                 TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED
                 if restricted_gate
@@ -491,8 +556,9 @@ class ProjectPosture(BaseModel):
                 )
             )
 
-        if self.stage is TaskmasterStage.COMPLETED and not (
-            verification_gate and restricted_gate and sandbox_gate
+        if self.stage is TaskmasterStage.COMPLETED and (
+            not (verification_gate and restricted_gate and sandbox_gate)
+            or final_output_hash_mismatch
         ):
             if sandbox_gate:
                 repaired_stage = TaskmasterStage.SECURE_SANDBOX_VERIFIED
@@ -505,23 +571,41 @@ class ProjectPosture(BaseModel):
             else:
                 repaired_stage = TaskmasterStage.RECEIVED
             self.stage = repaired_stage
-            if self.final_output is not None:
-                output = dict(self.final_output)
-                output["workflow_status"] = "BLOCKED"
-                output["completion_status"] = "BLOCKED"
-                output["derived_completion_state_revalidated"] = True
-                self.final_output = output
+            final_output_updates.update(
+                {
+                    "workflow_status": "BLOCKED",
+                    "completion_status": "BLOCKED",
+                    "derived_completion_state_revalidated": True,
+                }
+            )
             self.checkpoints.append(
                 CheckpointRecord(
                     stage=repaired_stage,
                     title="Persisted completion invalidated",
                     evidence_summary=(
-                        "COMPLETED was downgraded on load because verification, "
-                        "restricted-execution, and secure-sandbox gates do not all pass."
+                        "COMPLETED was downgraded on load because its current gates "
+                        "or final-payload integrity check do not pass."
                     ),
                     actor="system:migration_guard",
                 )
             )
+
+        if self.final_output is not None:
+            state_mismatch = any(
+                self.final_output.get(key) != value for key, value in final_output_updates.items()
+            )
+            if final_output_hash_mismatch or state_mismatch:
+                final_output_updates["derived_execution_state_revalidated"] = True
+                reason = (
+                    "PAYLOAD_HASH_MISMATCH"
+                    if final_output_hash_mismatch
+                    else "PERSISTED_STATE_REVALIDATION"
+                )
+                self.final_output = invalidate_final_output_payload(
+                    self.final_output,
+                    final_output_updates,
+                    reason=reason,
+                )
         return self
 
     project_id: str = Field(

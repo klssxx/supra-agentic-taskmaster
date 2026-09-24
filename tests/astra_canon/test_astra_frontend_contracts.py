@@ -67,3 +67,32 @@ def test_frontend_escapes_dynamic_html_and_project_ids() -> None:
     assert "encodeURIComponent(currentProjectId)" in app
     assert "encodeURIComponent(id)" in app
     assert 'onclick="loadProjectById' not in app
+
+
+def test_frontend_wires_current_restricted_and_secure_sandbox_stages() -> None:
+    app = _read("src/supra_agentic/web/app.js")
+    canvas = _read("src/supra_agentic/web/canvas.js")
+    index = _read("src/supra_agentic/web/index.html")
+
+    assert "posture.restricted_execution_results" in app
+    assert "posture.secure_sandbox_results" in app
+    assert "setStatus(posture.stage)" in app
+    assert "IDENTITY_BOUND_ISOLATION_PASS" in app
+    assert 'id="causal-dag-canvas"' in index
+    assert "posture.stage" in canvas
+    assert "posture.sandbox_results" not in app
+    assert "Synthetic Fuzz" not in canvas
+    assert "window.causalCanvasInstance = new CausalCanvas" in canvas
+
+
+def test_remote_ui_can_supply_api_auth_without_putting_secrets_in_urls() -> None:
+    app = _read("src/supra_agentic/web/app.js")
+    index = _read("src/supra_agentic/web/index.html")
+
+    assert 'type="password"' in index
+    assert 'id="api-key-input"' in index
+    assert "function apiFetch(url, options = {})" in app
+    assert "headers.set('X-API-Key', apiKey)" in app
+    assert "return fetch(url, { ...options, headers });" in app
+    assert "fetch('/api/v1" not in app
+    assert "window.open(`/api/v1/export" not in app

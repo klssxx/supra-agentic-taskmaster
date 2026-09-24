@@ -65,8 +65,15 @@ def test_runner_golden_path_execution(monkeypatch: pytest.MonkeyPatch):
     with tempfile.TemporaryDirectory() as tmpdir:
         state_manager.storage_dir = type(state_manager.storage_dir)(tmpdir)
 
-        def _fake_sandbox(code: str, *, identity: dict[str, str], config=None):
+        def _fake_sandbox(
+            code: str,
+            *,
+            identity: dict[str, str],
+            config=None,
+            expected_output_marker=None,
+        ):
             assert "SUPRA_SECURE_SANDBOX_OK" in code
+            assert expected_output_marker == "SUPRA_SECURE_SANDBOX_OK"
             return SecureSandboxResult(
                 execution_semantics_version=SECURE_SANDBOX_SEMANTICS_VERSION,
                 candidate_id=identity["candidate_id"],

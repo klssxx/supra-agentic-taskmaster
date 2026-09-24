@@ -3,7 +3,6 @@
 import tempfile
 
 import pytest
-
 import supra_agentic.tools as tools_module
 from supra_agentic.models import (
     SECURE_SANDBOX_SEMANTICS_VERSION,
@@ -75,8 +74,15 @@ def test_full_tool_cycle_execution(monkeypatch: pytest.MonkeyPatch):
         assert r4["stage"] == TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED.value
         assert r4["restricted_execution_result"]["passed"] is True
 
-        def _fake_sandbox(code: str, *, identity: dict[str, str], config=None):
+        def _fake_sandbox(
+            code: str,
+            *,
+            identity: dict[str, str],
+            config=None,
+            expected_output_marker=None,
+        ):
             assert "SUPRA_SECURE_SANDBOX_OK" in code
+            assert expected_output_marker == "SUPRA_SECURE_SANDBOX_OK"
             return SecureSandboxResult(
                 execution_semantics_version=SECURE_SANDBOX_SEMANTICS_VERSION,
                 candidate_id=identity["candidate_id"],
@@ -118,16 +124,14 @@ def test_full_tool_cycle_execution(monkeypatch: pytest.MonkeyPatch):
             assert "audit_sha256" in r6["final_deliverable"]
             assert len(r6["final_deliverable"]["audit_sha256"]) == 64
             assert (
-                r6["final_deliverable"]["secure_sandbox_status"]
-                == "IDENTITY_BOUND_ISOLATION_PASS"
+                r6["final_deliverable"]["secure_sandbox_status"] == "IDENTITY_BOUND_ISOLATION_PASS"
             )
             assert (
                 r6["final_deliverable"]["secure_sandbox_execution_scope"]
                 == "IDENTITY_BOUNDARY_SMOKE_ONLY"
             )
             assert (
-                r6["final_deliverable"]["candidate_mechanism_executed_in_secure_sandbox"]
-                is False
+                r6["final_deliverable"]["candidate_mechanism_executed_in_secure_sandbox"] is False
             )
         else:
             with pytest.raises(CompletionGateError):

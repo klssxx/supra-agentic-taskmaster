@@ -8,11 +8,9 @@ from __future__ import annotations
 import os
 
 import pytest
-
 from supra_agentic.models import (
     TaskmasterStage,
     VerificationReport,
-    candidate_execution_identity,
 )
 from supra_agentic.sandbox import run_python_in_secure_docker
 from supra_agentic.state import state_manager
@@ -88,7 +86,6 @@ def test_real_docker_sandbox_can_satisfy_completion_gate(tmp_path) -> None:
     )
     assert final["final_deliverable"]["candidate_mechanism_executed_in_secure_sandbox"] is False
     assert final["final_deliverable"]["scientific_status"] == "NOT_VALIDATED"
-
 
 
 def test_real_docker_sandbox_observes_critical_isolation_boundaries() -> None:

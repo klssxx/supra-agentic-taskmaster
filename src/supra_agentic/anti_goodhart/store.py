@@ -36,9 +36,10 @@ def _interprocess_file_lock(path: Path) -> Iterator[None]:
         if os.name == "nt":
             import msvcrt
 
+            msvcrt_module = cast(Any, msvcrt)
             while True:
                 try:
-                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                    msvcrt_module.locking(handle.fileno(), msvcrt_module.LK_NBLCK, 1)
                     break
                 except OSError:
                     time.sleep(_PROCESS_LOCK_RETRY_SECONDS)
@@ -46,7 +47,7 @@ def _interprocess_file_lock(path: Path) -> Iterator[None]:
                 yield
             finally:
                 handle.seek(0)
-                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                msvcrt_module.locking(handle.fileno(), msvcrt_module.LK_UNLCK, 1)
         else:
             import fcntl
 
@@ -89,9 +90,7 @@ class ObserverStore:
         try:
             text = raw.decode("utf-8")
         except UnicodeDecodeError as exc:
-            raise ObserverStoreCorruptionError(
-                f"{path.name} contains invalid UTF-8"
-            ) from exc
+            raise ObserverStoreCorruptionError(f"{path.name} contains invalid UTF-8") from exc
 
         records: list[dict[str, Any]] = []
         for line_number, line in enumerate(text.splitlines(), start=1):
@@ -190,9 +189,7 @@ class ObserverStore:
 
     def append_diagnostic(self, diagnostic: Diagnostic) -> bool:
         with self._lock, _interprocess_file_lock(self.lock_path):
-            existing = {
-                str(item.get("diagnostic_id") or "") for item in self.read_diagnostics()
-            }
+            existing = {str(item.get("diagnostic_id") or "") for item in self.read_diagnostics()}
             if diagnostic.diagnostic_id in existing:
                 return False
             self.root.mkdir(parents=True, exist_ok=True)

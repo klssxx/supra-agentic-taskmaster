@@ -3,7 +3,6 @@
 import tempfile
 
 import pytest
-
 from supra_agentic.dossier import generate_svg_architecture
 from supra_agentic.models import RestrictedExecutionResult, SecureSandboxResult
 from supra_agentic.state import CompletionGateError, state_manager

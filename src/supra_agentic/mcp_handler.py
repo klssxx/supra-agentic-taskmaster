@@ -15,7 +15,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from .runner import taskmaster_runner
-from .state import state_manager
+from .state import state_manager, validate_project_id
 from .tools import (
     MAX_FUZZ_ITERATIONS,
     decompose_objective,
@@ -45,6 +45,7 @@ MCP_TOOLS_MANIFEST = [
                 "domain": {"type": "string", "default": "general"},
             },
             "required": ["objective"],
+            "additionalProperties": False,
         },
     },
     {
@@ -58,6 +59,7 @@ MCP_TOOLS_MANIFEST = [
                 "domain": {"type": "string", "default": "general"},
             },
             "required": ["project_id", "objective"],
+            "additionalProperties": False,
         },
     },
     {
@@ -71,6 +73,7 @@ MCP_TOOLS_MANIFEST = [
                 "allow_disruptive": {"type": "boolean", "default": True},
             },
             "required": ["project_id"],
+            "additionalProperties": False,
         },
     },
     {
@@ -82,6 +85,7 @@ MCP_TOOLS_MANIFEST = [
                 "project_id": {"type": "string"},
             },
             "required": ["project_id"],
+            "additionalProperties": False,
         },
     },
     {
@@ -123,6 +127,78 @@ MCP_TOOLS_MANIFEST = [
         },
     },
 ]
+
+_TOOL_ALLOWED_FIELDS: dict[str, set[str]] = {
+    "supra_quick_run": {"objective", "domain"},
+    "supra_decompose": {"project_id", "objective", "domain"},
+    "supra_synthesize": {"project_id", "pathways_count", "allow_disruptive"},
+    "supra_verify": {"project_id"},
+    "supra_restricted_execution": {"project_id", "fuzz_iterations"},
+    "supra_secure_sandbox": {"project_id"},
+}
+_TOOL_REQUIRED_FIELDS: dict[str, set[str]] = {
+    "supra_quick_run": {"objective"},
+    "supra_decompose": {"project_id", "objective"},
+    "supra_synthesize": {"project_id"},
+    "supra_verify": {"project_id"},
+    "supra_restricted_execution": {"project_id"},
+    "supra_secure_sandbox": {"project_id"},
+}
+
+
+def _validate_tool_arguments(tool_name: str, args: Mapping[str, Any]) -> str | None:
+    """Return a stable invalid-params message before dispatching a public tool."""
+    allowed = _TOOL_ALLOWED_FIELDS.get(tool_name)
+    if allowed is None:
+        return None
+
+    unexpected = sorted(str(key) for key in args if key not in allowed)
+    if unexpected:
+        return f"Invalid params: unsupported fields {unexpected}"
+
+    missing = sorted(field for field in _TOOL_REQUIRED_FIELDS[tool_name] if field not in args)
+    if missing:
+        return f"Invalid params: missing required fields {missing}"
+
+    for field in ("objective", "domain"):
+        if field not in args:
+            continue
+        value = args[field]
+        if not isinstance(value, str) or (field == "objective" and not value.strip()):
+            qualifier = "non-empty " if field == "objective" else ""
+            return f"Invalid params: {field} must be a {qualifier}string"
+
+    if "project_id" in args:
+        try:
+            validate_project_id(args["project_id"])
+        except (TypeError, ValueError):
+            return "Invalid params: project_id has an invalid format"
+
+    if "pathways_count" in args:
+        pathways_count = args["pathways_count"]
+        if (
+            isinstance(pathways_count, bool)
+            or not isinstance(pathways_count, int)
+            or not 1 <= pathways_count <= 100
+        ):
+            return "Invalid params: pathways_count must be an integer between 1 and 100"
+
+    if "allow_disruptive" in args and not isinstance(args["allow_disruptive"], bool):
+        return "Invalid params: allow_disruptive must be a boolean"
+
+    if "fuzz_iterations" in args:
+        iterations = args["fuzz_iterations"]
+        if (
+            isinstance(iterations, bool)
+            or not isinstance(iterations, int)
+            or not 1 <= iterations <= MAX_FUZZ_ITERATIONS
+        ):
+            return (
+                "Invalid params: fuzz_iterations must be an integer "
+                f"between 1 and {MAX_FUZZ_ITERATIONS}"
+            )
+    return None
+
 
 MCP_RESOURCES_MANIFEST = [
     {
@@ -168,6 +244,15 @@ def handle_mcp_jsonrpc_request(payload: Mapping[str, Any]) -> dict[str, Any]:
             "jsonrpc": "2.0",
             "id": req_id,
             "error": {"code": -32600, "message": "Invalid Request: 'method' must be a string"},
+        }
+    if not isinstance(params, Mapping):
+        return {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "error": {
+                "code": -32602,
+                "message": "Invalid params: params must be an object",
+            },
         }
 
     try:
@@ -235,9 +320,173 @@ def handle_mcp_jsonrpc_request(payload: Mapping[str, Any]) -> dict[str, Any]:
                 "result": {"prompts": MCP_PROMPTS_MANIFEST},
             }
 
+        if method == "prompts/get":
+            unexpected_params = sorted(
+                str(key) for key in params if key not in {"name", "arguments"}
+            )
+            if unexpected_params:
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {
+                        "code": -32602,
+                        "message": f"Invalid params: unsupported fields {unexpected_params}",
+                    },
+                }
+            prompt_name = params.get("name")
+            arguments = params.get("arguments", {})
+            if not isinstance(prompt_name, str) or not isinstance(arguments, Mapping):
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {
+                        "code": -32602,
+                        "message": "Invalid params: prompt name and arguments object are required",
+                    },
+                }
+
+            if prompt_name == "prompt_taskmaster_challenge":
+                unexpected = sorted(str(key) for key in arguments if key != "objective")
+                objective = arguments.get("objective")
+                if unexpected:
+                    message = f"Invalid params: unsupported fields {unexpected}"
+                elif not isinstance(objective, str) or not objective.strip():
+                    message = "Invalid params: objective must be a non-empty string"
+                elif len(objective) > 12000:
+                    message = "Invalid params: objective exceeds 12000 characters"
+                else:
+                    prompt_text = (
+                        "Deconstruct the following engineering challenge into explicit system "
+                        "invariants, mutable assumptions, and distinct strategy pathways. "
+                        "Keep verification, restricted execution, sandbox isolation, and "
+                        "scientific validation as separate evidence scopes. Do not promote a "
+                        "workflow state without current evidence.\n\n"
+                        f"Objective (JSON string): {json.dumps(objective, ensure_ascii=False)}"
+                    )
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": req_id,
+                        "result": {
+                            "description": "Structured Taskmaster challenge prompt",
+                            "messages": [
+                                {
+                                    "role": "user",
+                                    "content": {"type": "text", "text": prompt_text},
+                                }
+                            ],
+                        },
+                    }
+            elif prompt_name == "prompt_falsification_audit":
+                unexpected = sorted(str(key) for key in arguments if key != "project_id")
+                project_id = arguments.get("project_id")
+                if unexpected:
+                    message = f"Invalid params: unsupported fields {unexpected}"
+                elif not isinstance(project_id, str):
+                    message = "Invalid params: project_id has an invalid format"
+                else:
+                    try:
+                        validated_project_id = validate_project_id(project_id)
+                    except (TypeError, ValueError):
+                        message = "Invalid params: project_id has an invalid format"
+                    else:
+                        posture = state_manager.get_project(validated_project_id)
+                        if posture is None:
+                            message = "Invalid params: project_id was not found"
+                        else:
+                            latest_restricted = (
+                                posture.restricted_execution_results[-1]
+                                if posture.restricted_execution_results
+                                else None
+                            )
+                            latest_sandbox = (
+                                posture.secure_sandbox_results[-1]
+                                if posture.secure_sandbox_results
+                                else None
+                            )
+                            snapshot = {
+                                "project_id": posture.project_id,
+                                "objective": posture.objective,
+                                "stage": posture.stage.value,
+                                "selected_candidate": (
+                                    posture.selected_candidate.model_dump(mode="json")
+                                    if posture.selected_candidate
+                                    else None
+                                ),
+                                "verification": (
+                                    posture.verification.model_dump(mode="json")
+                                    if posture.verification
+                                    else {"verdict": "NOT_EVALUATED"}
+                                ),
+                                "latest_restricted_execution": (
+                                    latest_restricted.model_dump(mode="json")
+                                    if latest_restricted
+                                    else None
+                                ),
+                                "latest_secure_sandbox_execution": (
+                                    latest_sandbox.model_dump(mode="json")
+                                    if latest_sandbox
+                                    else None
+                                ),
+                                "final_output": posture.final_output,
+                            }
+                            prompt_text = (
+                                "Attempt to falsify the current project claims using only the "
+                                "evidence snapshot below. Identify stale, missing, unbound, or "
+                                "contradictory evidence. Keep strategy coverage, restricted "
+                                "execution, isolation, and scientific validation distinct; do not "
+                                "promote any state.\n\n"
+                                + json.dumps(snapshot, indent=2, ensure_ascii=False)
+                            )
+                            return {
+                                "jsonrpc": "2.0",
+                                "id": req_id,
+                                "result": {
+                                    "description": "Evidence-scoped falsification audit prompt",
+                                    "messages": [
+                                        {
+                                            "role": "user",
+                                            "content": {"type": "text", "text": prompt_text},
+                                        }
+                                    ],
+                                },
+                            }
+            else:
+                message = "Invalid params: unknown prompt name"
+
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "error": {"code": -32602, "message": message},
+            }
+
         if method == "tools/call":
             tool_name = params.get("name")
             args = params.get("arguments", {})
+            if not isinstance(tool_name, str):
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {
+                        "code": -32602,
+                        "message": "Invalid params: tool name must be a string",
+                    },
+                }
+            if not isinstance(args, Mapping):
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {
+                        "code": -32602,
+                        "message": "Invalid params: arguments must be an object",
+                    },
+                }
+            invalid_arguments = _validate_tool_arguments(tool_name, args)
+            if invalid_arguments is not None:
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {"code": -32602, "message": invalid_arguments},
+                }
 
             if tool_name == "supra_quick_run":
                 posture = taskmaster_runner.run_golden_path(
@@ -293,47 +542,10 @@ def handle_mcp_jsonrpc_request(payload: Mapping[str, Any]) -> dict[str, Any]:
             elif tool_name == "supra_verify":
                 res = verify_solution(args["project_id"])
             elif tool_name == "supra_restricted_execution":
-                allowed = {"project_id", "fuzz_iterations"}
-                unexpected = sorted(set(args) - allowed)
-                if unexpected:
-                    return {
-                        "jsonrpc": "2.0",
-                        "id": req_id,
-                        "error": {
-                            "code": -32602,
-                            "message": f"Invalid params: unsupported fields {unexpected}",
-                        },
-                    }
                 iterations = args.get("fuzz_iterations", 5)
-                if (
-                    isinstance(iterations, bool)
-                    or not isinstance(iterations, int)
-                    or not 1 <= iterations <= MAX_FUZZ_ITERATIONS
-                ):
-                    return {
-                        "jsonrpc": "2.0",
-                        "id": req_id,
-                        "error": {
-                            "code": -32602,
-                            "message": (
-                                "Invalid params: fuzz_iterations must be an integer "
-                                f"between 1 and {MAX_FUZZ_ITERATIONS}"
-                            ),
-                        },
-                    }
+                assert isinstance(iterations, int) and not isinstance(iterations, bool)
                 res = restricted_python_executor(args["project_id"], fuzz_iterations=iterations)
             elif tool_name == "supra_secure_sandbox":
-                allowed = {"project_id"}
-                unexpected = sorted(set(args) - allowed)
-                if unexpected:
-                    return {
-                        "jsonrpc": "2.0",
-                        "id": req_id,
-                        "error": {
-                            "code": -32602,
-                            "message": f"Invalid params: unsupported fields {unexpected}",
-                        },
-                    }
                 res = secure_sandbox_executor(args["project_id"])
             else:
                 return {

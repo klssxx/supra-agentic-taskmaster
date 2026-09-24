@@ -12,6 +12,14 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function apiFetch(url, options = {}) {
+  const headers = new Headers(options.headers || {});
+  const apiKeyInput = document.getElementById('api-key-input');
+  const apiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
+  if (apiKey) headers.set('X-API-Key', apiKey);
+  return fetch(url, { ...options, headers });
+}
+
 function pct(value) {
   if (value === null || value === undefined) return "NOT_AVAILABLE";
   const n = Number(value);
@@ -76,7 +84,7 @@ async function runTask() {
   activateView("dashboard");
 
   try {
-    const response = await fetch("/api/v1/projects", {
+    const response = await apiFetch("/api/v1/projects", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({
@@ -109,7 +117,7 @@ async function runExample() {
   setStatus("RECEIVED");
   activateView("dashboard");
   try {
-    const response = await fetch("/api/v1/examples/quick-run");
+    const response = await apiFetch("/api/v1/examples/quick-run");
     if (!response.ok) throw new Error("HTTP " + response.status);
     const data = await response.json();
     currentProjectId = data.project_id;
@@ -351,7 +359,7 @@ function renderConclusion(ver, stage, output, secure) {
 
 async function loadHealth() {
   try {
-    const res = await fetch("/health");
+    const res = await apiFetch("/health");
     if (!res.ok) throw new Error();
     const data = await res.json();
     const provider = data.provider || {};
@@ -369,7 +377,7 @@ async function loadHealth() {
 async function loadProviders() {
   const grid = $("providers-grid");
   try {
-    const res = await fetch("/api/v1/providers");
+    const res = await apiFetch("/api/v1/providers");
     if (!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
     const providers = data.providers || [];
@@ -389,7 +397,7 @@ async function loadProviders() {
 async function loadProjects() {
   const grid = $("projects-grid");
   try {
-    const res = await fetch("/api/v1/projects?limit=30");
+    const res = await apiFetch("/api/v1/projects?limit=30");
     if (!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
     const projects = data.projects || [];
@@ -425,7 +433,7 @@ async function loadProjects() {
 
 async function loadProject(id) {
   try {
-    const res = await fetch("/api/v1/projects/" + encodeURIComponent(id));
+    const res = await apiFetch("/api/v1/projects/" + encodeURIComponent(id));
     if (!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
     currentProjectId = data.project_id || id;
@@ -439,7 +447,7 @@ async function loadProject(id) {
 
 async function exportMarkdown() {
   if (!currentProjectId) return;
-  const res = await fetch("/api/v1/export/dossier/" + encodeURIComponent(currentProjectId));
+  const res = await apiFetch("/api/v1/export/dossier/" + encodeURIComponent(currentProjectId));
   if (!res.ok) return;
   const data = await res.json();
   const dossier = data.markdown_dossier || data.dossier || JSON.stringify(data, null, 2);
@@ -452,13 +460,16 @@ async function exportMarkdown() {
   URL.revokeObjectURL(url);
 }
 
-function openHtmlDossier() {
+async function openHtmlDossier() {
   if (!currentProjectId) return;
-  window.open(
-    "/api/v1/export/dossier/html/" + encodeURIComponent(currentProjectId),
-    "_blank",
-    "noopener"
+  const res = await apiFetch(
+    "/api/v1/export/dossier/html/" + encodeURIComponent(currentProjectId)
   );
+  if (!res.ok) return;
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  window.open(url, "_blank", "noopener");
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 function wireUI() {

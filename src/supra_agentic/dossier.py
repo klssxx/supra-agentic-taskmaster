@@ -29,9 +29,7 @@ def generate_svg_architecture(posture: ProjectPosture) -> str:
         if latest_execution
         else "NOT_RUN"
     )
-    latest_sandbox = (
-        posture.secure_sandbox_results[-1] if posture.secure_sandbox_results else None
-    )
+    latest_sandbox = posture.secure_sandbox_results[-1] if posture.secure_sandbox_results else None
     sandbox_status = _html(
         "IDENTITY_BOUND_ISOLATION_PASS"
         if latest_sandbox
@@ -39,9 +37,7 @@ def generate_svg_architecture(posture: ProjectPosture) -> str:
         and latest_sandbox.identity_bound
         and latest_sandbox.isolation_verified
         else "IDENTITY_BOUND_ISOLATION_FAIL"
-        if latest_sandbox
-        and latest_sandbox.identity_bound
-        and latest_sandbox.isolation_verified
+        if latest_sandbox and latest_sandbox.identity_bound and latest_sandbox.isolation_verified
         else "UNVERIFIED_ISOLATION"
         if latest_sandbox
         else "NOT_RUN"
@@ -115,9 +111,7 @@ def export_full_html_dossier(posture: ProjectPosture) -> str:
     latest_execution = (
         posture.restricted_execution_results[-1] if posture.restricted_execution_results else None
     )
-    latest_sandbox = (
-        posture.secure_sandbox_results[-1] if posture.secure_sandbox_results else None
-    )
+    latest_sandbox = posture.secure_sandbox_results[-1] if posture.secure_sandbox_results else None
     restricted_status_text = _html(
         "BOUND_PASS"
         if latest_execution and latest_execution.passed and latest_execution.identity_bound
@@ -134,9 +128,7 @@ def export_full_html_dossier(posture: ProjectPosture) -> str:
         and latest_sandbox.identity_bound
         and latest_sandbox.isolation_verified
         else "IDENTITY_BOUND_ISOLATION_FAIL"
-        if latest_sandbox
-        and latest_sandbox.identity_bound
-        and latest_sandbox.isolation_verified
+        if latest_sandbox and latest_sandbox.identity_bound and latest_sandbox.isolation_verified
         else "UNVERIFIED_ISOLATION"
         if latest_sandbox
         else "NOT_RUN"

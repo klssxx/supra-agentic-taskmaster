@@ -5,9 +5,8 @@ import tempfile
 import time
 
 import pytest
-from fastapi.testclient import TestClient
-
 import supra_agentic.service as service_module
+from fastapi.testclient import TestClient
 from supra_agentic.dossier import export_full_html_dossier
 from supra_agentic.models import ProjectPosture, TaskmasterStage
 from supra_agentic.service import _parse_cors_origins, app
@@ -31,7 +30,8 @@ def test_serve_ui():
     response = client.get("/")
     assert response.status_code == 200
     assert "SUPRA" in response.text
-    assert "Causal Intelligence Workbench" in response.text\n    assert "Define un objetivo para SUPRA" in response.text
+    assert "Causal Intelligence Workbench" in response.text
+    assert "Define un objetivo para SUPRA" in response.text
 
 
 def test_quick_run_example():

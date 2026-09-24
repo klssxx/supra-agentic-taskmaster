@@ -1,14 +1,18 @@
 """Tests for SUPRA Project State Manager and Models."""
 
+import json
 import tempfile
+import time
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from threading import Barrier
 
 import pytest
 from pydantic import ValidationError
-
 from supra_agentic.models import (
-    ProjectPosture,
     RESTRICTED_EXECUTION_SEMANTICS_VERSION,
     SECURE_SANDBOX_SEMANTICS_VERSION,
+    ProjectPosture,
     RestrictedExecutionResult,
     SecureSandboxResult,
     StrategyCandidate,
@@ -18,8 +22,7 @@ from supra_agentic.models import (
     VerificationReport,
     candidate_execution_identity,
 )
-from supra_agentic.state import CompletionGateError, ProjectStateManager
-
+from supra_agentic.state import CompletionGateError, ProjectStateManager, ProjectTerminalStateError
 
 TEST_PROTOCOL_V1 = "sha256:" + "4" * 64
 TEST_PROTOCOL_V2 = "sha256:" + "5" * 64
@@ -540,9 +543,7 @@ def test_candidate_mechanism_revision_cannot_reuse_prior_completion_evidence() -
             select_best=True,
         )
         assert revised_posture.selected_candidate is not None
-        revised_identity = candidate_execution_identity(
-            revised_posture.selected_candidate
-        )
+        revised_identity = candidate_execution_identity(revised_posture.selected_candidate)
         assert revised_identity["candidate_id"] == original_identity["candidate_id"]
         assert revised_identity["mechanism_version"] != original_identity["mechanism_version"]
         assert revised_posture.verification is None
@@ -618,7 +619,6 @@ def test_project_id_cannot_overwrite_existing_project() -> None:
         loaded = sm.get_project(original.project_id)
         assert loaded is not None
         assert loaded.objective == "first project"
-
 
 
 @pytest.mark.parametrize("verdict", ["FAIL", "NOT_EVALUATED"])
@@ -778,8 +778,6 @@ def test_verification_for_nonselected_candidate_is_rejected_without_mutating_com
         assert unchanged.verification.candidate_id == selected.candidate_id
 
 
-
-
 @pytest.mark.parametrize("value", ["true", "false", 1, 0])
 def test_restricted_execution_rejects_coercible_passed_flags(value) -> None:
     with pytest.raises(ValidationError):
@@ -796,16 +794,19 @@ def test_restricted_execution_rejects_coercible_passed_flags(value) -> None:
         )
 
 
-@pytest.mark.parametrize("field", [
-    "passed",
-    "timed_out",
-    "network_isolated",
-    "read_only_root",
-    "capabilities_dropped",
-    "no_new_privileges",
-    "non_root_user",
-    "resource_limits_applied",
-])
+@pytest.mark.parametrize(
+    "field",
+    [
+        "passed",
+        "timed_out",
+        "network_isolated",
+        "read_only_root",
+        "capabilities_dropped",
+        "no_new_privileges",
+        "non_root_user",
+        "resource_limits_applied",
+    ],
+)
 def test_secure_sandbox_rejects_parseable_boolean_coercions(field: str) -> None:
     payload = {
         "candidate_id": "cand-strict",
@@ -828,7 +829,6 @@ def test_secure_sandbox_rejects_parseable_boolean_coercions(field: str) -> None:
     payload[field] = "true"
     with pytest.raises(ValidationError):
         SecureSandboxResult.model_validate(payload)
-
 
 
 @pytest.mark.parametrize(
@@ -878,3 +878,283 @@ def test_noncanonical_secure_hash_reference_cannot_be_identity_bound(field: str)
     payload[field] = "sha256:x"
     result = SecureSandboxResult.model_validate(payload)
     assert result.identity_bound is False
+
+
+def test_failed_project_cannot_be_reopened_by_state_mutators() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        sm = ProjectStateManager(storage_dir=tmpdir)
+        project = sm.create_project(objective="failed projects are terminal")
+        failed = sm.fail_project(project.project_id, "fatal workflow error")
+        checkpoint_count = len(failed.checkpoints)
+
+        decomposition = StructuredDecomposition(
+            domain="general",
+            core_objective="must not replay in place",
+        )
+        candidate = StrategyCandidate(
+            pathway_name="Rejected replay",
+            paradigm_type="ORTHOGONAL",
+            hypothesis="A failed project must use a new project identity.",
+            action_plan=["create a new project"],
+        )
+
+        with pytest.raises(ProjectTerminalStateError):
+            sm.update_decomposition(project.project_id, decomposition)
+        with pytest.raises(ProjectTerminalStateError):
+            sm.add_candidates(project.project_id, [candidate])
+
+        unchanged = sm.get_project(project.project_id)
+        assert unchanged is not None
+        assert unchanged.stage is TaskmasterStage.FAILED
+        assert unchanged.decomposition is None
+        assert unchanged.candidates == []
+        assert len(unchanged.checkpoints) == checkpoint_count
+
+
+def test_persistence_failure_rolls_back_in_memory_mutation(monkeypatch) -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        sm = ProjectStateManager(storage_dir=tmpdir)
+        project = sm.create_project(objective="persistence rollback contract")
+        candidate = StrategyCandidate(
+            pathway_name="Transactional state",
+            paradigm_type="ORTHOGONAL",
+            hypothesis="Memory and disk remain aligned after write failure.",
+            action_plan=["rollback the in-memory mutation"],
+        )
+
+        def fail_persistence(project_id: str) -> None:
+            raise RuntimeError(f"simulated persistence failure for {project_id}")
+
+        monkeypatch.setattr(sm, "_persist_project", fail_persistence)
+        with pytest.raises(RuntimeError, match="simulated persistence failure"):
+            sm.add_candidates(project.project_id, [candidate])
+
+        in_memory = sm.get_project(project.project_id)
+        assert in_memory is not None
+        assert in_memory.stage is TaskmasterStage.RECEIVED
+        assert in_memory.candidates == []
+        assert in_memory.selected_candidate is None
+
+        reloaded = ProjectStateManager(storage_dir=tmpdir).get_project(project.project_id)
+        assert reloaded is not None
+        assert reloaded.stage is TaskmasterStage.RECEIVED
+        assert reloaded.candidates == []
+
+
+def test_persisted_project_identity_must_match_filename() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        posture = ProjectPosture(
+            project_id="real-project",
+            objective="storage identity binding",
+            stage=TaskmasterStage.RECEIVED,
+            created_at=time.time(),
+            updated_at=time.time(),
+        )
+        Path(tmpdir, "alias-project.json").write_text(
+            posture.model_dump_json(),
+            encoding="utf-8",
+        )
+
+        manager = ProjectStateManager(storage_dir=tmpdir)
+        assert manager.get_project("alias-project") is None
+
+
+def test_cached_project_is_not_returned_after_persisted_state_corruption() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        manager = ProjectStateManager(storage_dir=tmpdir)
+        project = manager.create_project(objective="fail closed on corrupted persistence")
+        assert manager.get_project(project.project_id) is not None
+
+        state_file = Path(tmpdir, f"{project.project_id}.json")
+        state_file.write_text("{not valid json", encoding="utf-8")
+
+        assert manager.get_project(project.project_id) is None
+        assert project.project_id not in manager._projects
+
+
+def test_tampered_completed_payload_is_invalidated_and_downgraded_on_load() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        sm = ProjectStateManager(storage_dir=tmpdir)
+        project = sm.create_project(objective="tampered payload must not remain completed")
+        candidate = StrategyCandidate(
+            pathway_name="Integrity path",
+            paradigm_type="ORTHOGONAL",
+            hypothesis="The final payload remains integrity-addressed.",
+            action_plan=["verify the final payload hash on load"],
+        )
+        posture = sm.add_candidates(project.project_id, [candidate], select_best=True)
+        selected = posture.selected_candidate
+        assert selected is not None
+        identity = candidate_execution_identity(selected)
+        sm.record_verification(
+            project.project_id,
+            _verification_report(selected, verdict="PASS", confidence_score=1.0),
+        )
+        sm.record_restricted_execution(
+            project.project_id,
+            RestrictedExecutionResult(
+                candidate_id=identity["candidate_id"],
+                mechanism_version=identity["mechanism_version"],
+                claim_id=identity["claim_id"],
+                protocol_version=TEST_PROTOCOL_V1,
+                execution_semantics_version=RESTRICTED_EXECUTION_SEMANTICS_VERSION,
+                action_type="RESTRICTED_CODE_RUN",
+                passed=True,
+                output_log="pass",
+                duration_ms=1.0,
+            ),
+        )
+        sm.record_secure_sandbox_execution(project.project_id, _secure_result(identity))
+        completed = sm.complete_project(
+            project.project_id,
+            {"workflow_status": "COMPLETED", "completion_status": "COMPLETED"},
+        )
+        assert completed.final_output is not None
+        recorded_hash = completed.final_output["audit_sha256"]
+
+        state_file = Path(tmpdir, f"{project.project_id}.json")
+        persisted = completed.model_dump()
+        persisted_output = persisted["final_output"]
+        assert isinstance(persisted_output, dict)
+        persisted_output["workflow_status"] = "TAMPERED"
+        state_file.write_text(json.dumps(persisted), encoding="utf-8")
+
+        reloaded = ProjectStateManager(storage_dir=tmpdir).get_project(project.project_id)
+        assert reloaded is not None
+        assert reloaded.stage is TaskmasterStage.SECURE_SANDBOX_VERIFIED
+        assert reloaded.final_output is not None
+        assert "audit_sha256" not in reloaded.final_output
+        assert reloaded.final_output["rejected_audit_sha256"] == recorded_hash
+        assert reloaded.final_output["integrity_status"] == "INVALIDATED_BY_REVALIDATION"
+        assert reloaded.final_output["workflow_status"] == "BLOCKED"
+
+
+def test_concurrent_managers_cannot_overwrite_the_same_project_id(monkeypatch) -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        first = ProjectStateManager(storage_dir=tmpdir)
+        second = ProjectStateManager(storage_dir=tmpdir)
+        barrier = Barrier(2)
+        first_persist = first._persist_project
+        second_persist = second._persist_project
+
+        def pause_first(project_id: str, *args, **kwargs) -> None:
+            barrier.wait(timeout=5)
+            first_persist(project_id, *args, **kwargs)
+
+        def pause_second(project_id: str, *args, **kwargs) -> None:
+            barrier.wait(timeout=5)
+            second_persist(project_id, *args, **kwargs)
+
+        monkeypatch.setattr(first, "_persist_project", pause_first)
+        monkeypatch.setattr(second, "_persist_project", pause_second)
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [
+                executor.submit(
+                    first.create_project,
+                    "first concurrent objective",
+                    "shared-project",
+                ),
+                executor.submit(
+                    second.create_project,
+                    "second concurrent objective",
+                    "shared-project",
+                ),
+            ]
+            outcomes: list[ProjectPosture | Exception] = []
+            for future in futures:
+                try:
+                    outcomes.append(future.result())
+                except Exception as exc:
+                    outcomes.append(exc)
+
+        successes = [item for item in outcomes if isinstance(item, ProjectPosture)]
+        failures = [item for item in outcomes if isinstance(item, Exception)]
+        assert len(successes) == 1
+        assert len(failures) == 1
+        assert isinstance(failures[0], ValueError)
+
+        persisted = ProjectStateManager(storage_dir=tmpdir).get_project("shared-project")
+        assert persisted is not None
+        assert persisted.objective == successes[0].objective
+
+
+def test_candidate_selection_is_unique_and_empty_sets_are_rejected() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        sm = ProjectStateManager(storage_dir=tmpdir)
+        project = sm.create_project(objective="candidate selection invariant")
+        candidates = [
+            StrategyCandidate(
+                pathway_name="Lower score",
+                paradigm_type="CONSERVATIVE",
+                hypothesis="Lower-scored candidate.",
+                action_plan=["remain unselected"],
+                feasibility_score=0.1,
+                divergence_score=0.1,
+                is_selected=True,
+            ),
+            StrategyCandidate(
+                pathway_name="Higher score",
+                paradigm_type="ORTHOGONAL",
+                hypothesis="Higher-scored candidate.",
+                action_plan=["be selected"],
+                feasibility_score=0.9,
+                divergence_score=0.9,
+                is_selected=True,
+            ),
+        ]
+
+        posture = sm.add_candidates(project.project_id, candidates, select_best=True)
+        assert posture.selected_candidate is not None
+        assert posture.selected_candidate.pathway_name == "Higher score"
+        assert [candidate.is_selected for candidate in posture.candidates] == [False, True]
+
+        checkpoint_count = len(posture.checkpoints)
+        with pytest.raises(ValueError, match="at least one candidate"):
+            sm.add_candidates(project.project_id, [], select_best=True)
+        unchanged = sm.get_project(project.project_id)
+        assert unchanged is not None
+        assert len(unchanged.candidates) == 2
+        assert len(unchanged.checkpoints) == checkpoint_count
+
+
+@pytest.mark.parametrize("limit", [True, 0, -1, 101])
+def test_list_projects_rejects_unbounded_or_invalid_limits(limit: object) -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        sm = ProjectStateManager(storage_dir=tmpdir)
+        with pytest.raises(ValueError, match="integer between 1 and 100"):
+            sm.list_projects(limit=limit)  # type: ignore[arg-type]
+
+
+def test_concurrent_manager_mutations_preserve_both_committed_checkpoints() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        first = ProjectStateManager(storage_dir=tmpdir)
+        second = ProjectStateManager(storage_dir=tmpdir)
+        project = first.create_project(objective="serialize independent managers")
+
+        assert first.get_project(project.project_id) is not None
+        assert second.get_project(project.project_id) is not None
+        barrier = Barrier(2)
+
+        def update(manager: ProjectStateManager, label: str) -> None:
+            barrier.wait(timeout=2)
+            manager.update_decomposition(
+                project.project_id,
+                StructuredDecomposition(
+                    domain="concurrency",
+                    core_objective=label,
+                ),
+            )
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [
+                executor.submit(update, first, "first committed update"),
+                executor.submit(update, second, "second committed update"),
+            ]
+            for future in futures:
+                future.result(timeout=5)
+
+        persisted = ProjectStateManager(storage_dir=tmpdir).get_project(project.project_id)
+        assert persisted is not None
+        assert sum(item.title == "Objective Structured" for item in persisted.checkpoints) == 2
+        assert len(persisted.checkpoints) == 3

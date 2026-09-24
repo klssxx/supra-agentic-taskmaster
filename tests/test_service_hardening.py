@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 from supra_agentic import service
+from supra_agentic.models import ProjectPosture, TaskmasterStage
+from supra_agentic.state import ProjectAlreadyExistsError
 
 client = TestClient(service.app)
 
@@ -130,3 +133,42 @@ def test_internal_project_error_is_generic_and_secret_not_logged(monkeypatch, ca
     assert secret not in response.text
     assert secret not in caplog.text
     assert "RuntimeError" in caplog.text
+
+
+@pytest.mark.parametrize("limit", [0, -1, 101])
+def test_project_list_endpoint_enforces_bounded_limit(limit: int) -> None:
+    response = client.get("/api/v1/projects", params={"limit": limit})
+    assert response.status_code == 422
+
+
+def test_markdown_dossier_escapes_active_markup_and_flattens_lines(monkeypatch) -> None:
+    posture = ProjectPosture(
+        project_id="markdown-safety",
+        objective="<script>alert(1)</script>\n## injected heading",
+        stage=TaskmasterStage.RECEIVED,
+        created_at=time.time(),
+        updated_at=time.time(),
+    )
+    monkeypatch.setattr(service.state_manager, "get_project", lambda _project_id: posture)
+
+    dossier = service.export_technical_dossier("markdown-safety")["markdown_dossier"]
+
+    assert "<script>" not in dossier
+    assert "&lt;script&gt;alert\\(1\\)&lt;/script&gt; \\#\\# injected heading" in dossier
+    assert "\n## injected heading" not in dossier
+
+
+def test_late_atomic_project_collision_returns_conflict(monkeypatch) -> None:
+    def collide(*args, **kwargs):
+        raise ProjectAlreadyExistsError("simulated concurrent winner")
+
+    monkeypatch.setattr(service.TaskmasterRunner, "run_golden_path", collide)
+    response = client.post(
+        "/api/v1/projects",
+        json={
+            "objective": "bounded concurrent project request",
+            "project_id": "late-collision",
+        },
+    )
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Project ID already exists."}
