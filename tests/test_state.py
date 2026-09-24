@@ -690,10 +690,10 @@ def test_completed_project_is_immediately_downgraded_when_current_verification_r
         assert revised.final_output["derived_completion_state_revalidated"] is True
 
 
-def test_completed_project_is_immediately_downgraded_by_verification_for_other_candidate() -> None:
+def test_verification_for_nonselected_candidate_is_rejected_without_mutating_completion() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         sm = ProjectStateManager(storage_dir=tmpdir)
-        p = sm.create_project(objective="verification identity must remain current")
+        p = sm.create_project(objective="verification identity must remain selected-current")
         selected_candidate = StrategyCandidate(
             pathway_name="Selected Path",
             paradigm_type="ORTHOGONAL",
@@ -717,7 +717,6 @@ def test_completed_project_is_immediately_downgraded_by_verification_for_other_c
         )
         selected = posture.selected_candidate
         assert selected is not None
-        assert selected.candidate_id == selected_candidate.candidate_id
         identity = candidate_execution_identity(selected)
 
         sm.record_verification(
@@ -747,26 +746,29 @@ def test_completed_project_is_immediately_downgraded_by_verification_for_other_c
             ),
         )
         sm.record_secure_sandbox_execution(p.project_id, _secure_result(identity))
-        assert sm.complete_project(
+        completed = sm.complete_project(
             p.project_id,
             {"workflow_status": "COMPLETED"},
-        ).stage is TaskmasterStage.COMPLETED
-
-        revised = sm.record_verification(
-            p.project_id,
-            _verification_report(
-                alternate_candidate,
-                invariants_preserved=True,
-                invariants_checked=["alternate"],
-                vulnerabilities_detected=[],
-                confidence_score=1.0,
-                verdict="PASS",
-                rationale="Valid report, but not for selected candidate.",
-            ),
         )
+        assert completed.stage is TaskmasterStage.COMPLETED
 
-        assert revised.stage is TaskmasterStage.SECURE_SANDBOX_VERIFIED
-        assert revised.final_output is not None
-        assert revised.final_output["workflow_status"] == "BLOCKED"
-        assert revised.final_output["completion_status"] == "BLOCKED"
-        assert revised.final_output["verification_status"] == "NOT_EVALUATED"
+        with pytest.raises(ValueError, match="current selected candidate"):
+            sm.record_verification(
+                p.project_id,
+                _verification_report(
+                    alternate_candidate,
+                    invariants_preserved=True,
+                    invariants_checked=["alternate"],
+                    vulnerabilities_detected=[],
+                    confidence_score=1.0,
+                    verdict="PASS",
+                    rationale="Valid report for a nonselected alternative.",
+                ),
+            )
+
+        unchanged = sm.get_project(p.project_id)
+        assert unchanged is not None
+        assert unchanged.stage is TaskmasterStage.COMPLETED
+        assert unchanged.verification is not None
+        assert unchanged.verification.candidate_id == selected.candidate_id
+

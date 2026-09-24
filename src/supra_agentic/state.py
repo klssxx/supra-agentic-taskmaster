@@ -239,16 +239,14 @@ class ProjectStateManager:
         """Store verification report."""
         with self._lock:
             p = self._get_required_project(project_id)
-            candidate = next(
-                (item for item in p.candidates if item.candidate_id == report.candidate_id),
-                None,
-            )
             expected = (
-                candidate_execution_identity(candidate) if candidate is not None else None
+                candidate_execution_identity(p.selected_candidate)
+                if p.selected_candidate is not None
+                else None
             )
             if not _verification_matches_identity(report, expected):
                 raise ValueError(
-                    "verification report identity does not match a current candidate mechanism"
+                    "verification report identity does not match the current selected candidate"
                 )
             p.verification = report
 
