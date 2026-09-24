@@ -3,7 +3,9 @@
 import json
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Barrier
 
 import pytest
 from supra_agentic.models import (
@@ -812,3 +814,100 @@ def test_project_id_cannot_overwrite_existing_project() -> None:
         loaded = sm.get_project(original.project_id)
         assert loaded is not None
         assert loaded.objective == "first project"
+
+
+def test_concurrent_managers_cannot_overwrite_the_same_project_id(monkeypatch) -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        first = ProjectStateManager(storage_dir=tmpdir)
+        second = ProjectStateManager(storage_dir=tmpdir)
+        barrier = Barrier(2)
+        first_persist = first._persist_project
+        second_persist = second._persist_project
+
+        def pause_first(project_id: str, *args, **kwargs) -> None:
+            barrier.wait(timeout=5)
+            first_persist(project_id, *args, **kwargs)
+
+        def pause_second(project_id: str, *args, **kwargs) -> None:
+            barrier.wait(timeout=5)
+            second_persist(project_id, *args, **kwargs)
+
+        monkeypatch.setattr(first, "_persist_project", pause_first)
+        monkeypatch.setattr(second, "_persist_project", pause_second)
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [
+                executor.submit(
+                    first.create_project,
+                    "first concurrent objective",
+                    "shared-project",
+                ),
+                executor.submit(
+                    second.create_project,
+                    "second concurrent objective",
+                    "shared-project",
+                ),
+            ]
+            outcomes: list[ProjectPosture | Exception] = []
+            for future in futures:
+                try:
+                    outcomes.append(future.result())
+                except Exception as exc:
+                    outcomes.append(exc)
+
+        successes = [item for item in outcomes if isinstance(item, ProjectPosture)]
+        failures = [item for item in outcomes if isinstance(item, Exception)]
+        assert len(successes) == 1
+        assert len(failures) == 1
+        assert isinstance(failures[0], ValueError)
+
+        persisted = ProjectStateManager(storage_dir=tmpdir).get_project("shared-project")
+        assert persisted is not None
+        assert persisted.objective == successes[0].objective
+
+
+def test_candidate_selection_is_unique_and_empty_sets_are_rejected() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        sm = ProjectStateManager(storage_dir=tmpdir)
+        project = sm.create_project(objective="candidate selection invariant")
+        candidates = [
+            StrategyCandidate(
+                pathway_name="Lower score",
+                paradigm_type="CONSERVATIVE",
+                hypothesis="Lower-scored candidate.",
+                action_plan=["remain unselected"],
+                feasibility_score=0.1,
+                divergence_score=0.1,
+                is_selected=True,
+            ),
+            StrategyCandidate(
+                pathway_name="Higher score",
+                paradigm_type="ORTHOGONAL",
+                hypothesis="Higher-scored candidate.",
+                action_plan=["be selected"],
+                feasibility_score=0.9,
+                divergence_score=0.9,
+                is_selected=True,
+            ),
+        ]
+
+        posture = sm.add_candidates(project.project_id, candidates, select_best=True)
+        assert posture.selected_candidate is not None
+        assert posture.selected_candidate.pathway_name == "Higher score"
+        assert [candidate.is_selected for candidate in posture.candidates] == [False, True]
+
+        checkpoint_count = len(posture.checkpoints)
+        with pytest.raises(ValueError, match="at least one candidate"):
+            sm.add_candidates(project.project_id, [], select_best=True)
+        unchanged = sm.get_project(project.project_id)
+        assert unchanged is not None
+        assert len(unchanged.candidates) == 2
+        assert len(unchanged.checkpoints) == checkpoint_count
+
+
+@pytest.mark.parametrize("limit", [True, 0, -1, 101])
+def test_list_projects_rejects_unbounded_or_invalid_limits(limit: object) -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        sm = ProjectStateManager(storage_dir=tmpdir)
+        with pytest.raises(ValueError, match="integer between 1 and 100"):
+            sm.list_projects(limit=limit)  # type: ignore[arg-type]

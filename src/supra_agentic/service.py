@@ -7,11 +7,12 @@ import json
 import logging
 import os
 import secrets
+from html import escape
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException, Request, Response, status
+from fastapi import FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -22,7 +23,7 @@ from .mcp_handler import handle_mcp_jsonrpc_request
 from .models import ProjectPosture
 from .providers import ProviderError, get_provider, provider_names
 from .runner import TaskmasterRunner, taskmaster_runner
-from .state import state_manager, validate_project_id
+from .state import ProjectAlreadyExistsError, state_manager, validate_project_id
 
 logger = logging.getLogger("supra_agentic.service")
 
@@ -46,6 +47,15 @@ def _secure_sandbox_scope(posture: ProjectPosture) -> str:
 def _candidate_mechanism_executed_in_secure_sandbox(posture: ProjectPosture) -> bool:
     latest = posture.secure_sandbox_results[-1] if posture.secure_sandbox_results else None
     return bool(latest and latest.candidate_mechanism_executed)
+
+
+def _markdown_text(value: Any) -> str:
+    """Render untrusted values as single-line, inert Markdown text."""
+    text = " ".join(str(value).splitlines())
+    text = escape(text, quote=False).replace("`", "&#96;")
+    for marker in ("\\", "*", "_", "{", "}", "[", "]", "(", ")", "#", "+", "-", "!", "|", ">"):
+        text = text.replace(marker, f"\\{marker}")
+    return text
 
 
 MAX_MCP_BODY_SIZE = 8 * 1024 * 1024
@@ -303,6 +313,8 @@ def create_and_run_project(req: CreateProjectRequest) -> dict[str, Any] | Respon
         }
     except HTTPException:
         raise
+    except ProjectAlreadyExistsError as exc:
+        raise HTTPException(status_code=409, detail="Project ID already exists.") from exc
     except ValueError as exc:
         logger.warning("Invalid project request (%s)", type(exc).__name__)
         raise HTTPException(status_code=400, detail="Invalid project request.") from exc
@@ -338,7 +350,7 @@ def generate_with_provider(req: GenerateRequest) -> dict[str, Any]:
 
 
 @app.get("/api/v1/projects", tags=["Taskmaster"])
-def list_projects(limit: int = 20) -> dict[str, Any]:
+def list_projects(limit: Annotated[int, Query(ge=1, le=100)] = 20) -> dict[str, Any]:
     """List recent Taskmaster projects."""
     projects = state_manager.list_projects(limit=limit)
     return {
@@ -472,51 +484,52 @@ def export_technical_dossier(project_id: str) -> dict[str, Any]:
     scientific_status = out.get("scientific_status", "NOT_VALIDATED") if out else "NOT_VALIDATED"
 
     md_lines = [
-        f"# TECHNICAL DOSSIER: {posture.objective}",
-        f"**Project ID:** `{posture.project_id}`  ",
-        f"**Stage:** `{posture.stage.value}`  ",
-        f"**Audit SHA-256:** `{out.get('audit_sha256', 'N/A') if out else 'N/A'}`  ",
+        f"# TECHNICAL DOSSIER: {_markdown_text(posture.objective)}",
+        f"**Project ID:** `{_markdown_text(posture.project_id)}`  ",
+        f"**Stage:** `{_markdown_text(posture.stage.value)}`  ",
+        f"**Audit SHA-256:** `{_markdown_text(out.get('audit_sha256', 'N/A') if out else 'N/A')}`  ",
         "",
         "---",
         "",
         "## 1. Problem Decomposition & Invariants",
-        f"- **Domain:** {decomp.domain if decomp else 'N/A'}",
-        f"- **Core Objective:** {decomp.core_objective if decomp else 'N/A'}",
+        f"- **Domain:** {_markdown_text(decomp.domain if decomp else 'N/A')}",
+        f"- **Core Objective:** {_markdown_text(decomp.core_objective if decomp else 'N/A')}",
         "### System Invariants (Must Hold):",
     ]
     if decomp:
         for inv in decomp.invariants:
-            md_lines.append(f"- [x] {inv}")
+            md_lines.append(f"- [x] {_markdown_text(inv)}")
         md_lines.append("")
         md_lines.append("### Mutable Assumptions (Challenged):")
         for mut in decomp.mutable_assumptions:
-            md_lines.append(f"- [ ] ~{mut}~")
+            md_lines.append(f"- [ ] ~{_markdown_text(mut)}~")
 
     md_lines.extend(
         [
             "",
             "## 2. Selected Strategy Pathway",
-            f"- **Pathway:** {cand.pathway_name if cand else 'N/A'}",
-            f"- **Paradigm:** `{cand.paradigm_type if cand else 'N/A'}`",
-            f"- **Hypothesis:** {cand.hypothesis if cand else 'N/A'}",
+            f"- **Pathway:** {_markdown_text(cand.pathway_name if cand else 'N/A')}",
+            f"- **Paradigm:** `{_markdown_text(cand.paradigm_type if cand else 'N/A')}`",
+            f"- **Hypothesis:** {_markdown_text(cand.hypothesis if cand else 'N/A')}",
             f"- **Feasibility:** {cand.feasibility_score if cand else 0.0:.2f} | **Divergence:** {cand.divergence_score if cand else 0.0:.2f}",
             "",
             "## 3. Strategy Coverage & Restricted Execution Telemetry",
-            f"- **Coverage Verdict:** `{verification_text}` (Coverage fraction: {confidence_text})",
-            f"- **Scope:** `{verification_scope}`",
-            f"- **Rationale:** {ver.rationale if ver else 'No coverage evaluation available.'}",
+            f"- **Coverage Verdict:** `{_markdown_text(verification_text)}` (Coverage fraction: {_markdown_text(confidence_text)})",
+            f"- **Scope:** `{_markdown_text(verification_scope)}`",
+            f"- **Rationale:** {_markdown_text(ver.rationale if ver else 'No coverage evaluation available.')}",
             "",
             "## 4. Empirical Falsification (H0)",
-            f"- **Null Hypothesis:** `{h0_text}`",
-            f"- **H0 Evaluation Status:** `{h0_status}`",
-            f"- **Scientific Status:** `{scientific_status}`",
+            f"- **Null Hypothesis:** `{_markdown_text(h0_text)}`",
+            f"- **H0 Evaluation Status:** `{_markdown_text(h0_status)}`",
+            f"- **Scientific Status:** `{_markdown_text(scientific_status)}`",
             "",
             "## 5. Checkpoints Timeline",
         ]
     )
     for chk in posture.checkpoints:
         md_lines.append(
-            f"- **[{chk.stage.value}]** `{chk.actor}`: {chk.title} — *{chk.evidence_summary}*"
+            f"- **[{_markdown_text(chk.stage.value)}]** `{_markdown_text(chk.actor)}`: "
+            f"{_markdown_text(chk.title)} — *{_markdown_text(chk.evidence_summary)}*"
         )
 
     return {

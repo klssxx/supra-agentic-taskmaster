@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import logging
+import time
 
 from supra_agentic import mcp_handler
+from supra_agentic.models import ProjectPosture, TaskmasterStage
 
 
 def test_unexpected_mcp_error_does_not_disclose_exception_details(monkeypatch, caplog) -> None:
@@ -146,6 +148,62 @@ def test_secure_sandbox_mcp_tool_does_not_accept_remote_code() -> None:
                     "project_id": "project-1",
                     "code_snippet": "print('forbidden')",
                 },
+            },
+        }
+    )
+    assert response["error"]["code"] == -32602
+    assert "unsupported fields" in response["error"]["message"]
+
+
+def test_advertised_mcp_prompts_can_be_retrieved(monkeypatch) -> None:
+    challenge = mcp_handler.handle_mcp_jsonrpc_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 90,
+            "method": "prompts/get",
+            "params": {
+                "name": "prompt_taskmaster_challenge",
+                "arguments": {"objective": "Design a bounded coding agent"},
+            },
+        }
+    )
+    assert challenge["result"]["messages"][0]["role"] == "user"
+    assert "Design a bounded coding agent" in challenge["result"]["messages"][0]["content"]["text"]
+
+    posture = ProjectPosture(
+        project_id="audit-project",
+        objective="Audit an evidence ledger",
+        stage=TaskmasterStage.RECEIVED,
+        created_at=time.time(),
+        updated_at=time.time(),
+    )
+    monkeypatch.setattr(mcp_handler.state_manager, "get_project", lambda _project_id: posture)
+    audit = mcp_handler.handle_mcp_jsonrpc_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 91,
+            "method": "prompts/get",
+            "params": {
+                "name": "prompt_falsification_audit",
+                "arguments": {"project_id": "audit-project"},
+            },
+        }
+    )
+    audit_text = audit["result"]["messages"][0]["content"]["text"]
+    assert "audit-project" in audit_text
+    assert "NOT_EVALUATED" in audit_text
+    assert "do not promote" in audit_text.lower()
+
+
+def test_mcp_prompt_get_rejects_invalid_arguments() -> None:
+    response = mcp_handler.handle_mcp_jsonrpc_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 92,
+            "method": "prompts/get",
+            "params": {
+                "name": "prompt_taskmaster_challenge",
+                "arguments": {"objective": "bounded", "unsupported": True},
             },
         }
     )

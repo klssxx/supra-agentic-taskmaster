@@ -44,6 +44,10 @@ class ProjectTerminalStateError(RuntimeError):
     """Raised when callers try to replay a terminally failed project in place."""
 
 
+class ProjectAlreadyExistsError(ValueError):
+    """Raised when a project identity is already reserved in persistent storage."""
+
+
 def validate_project_id(project_id: str) -> str:
     """Validate the storage identity before any filesystem path is constructed."""
     if not isinstance(project_id, str) or not PROJECT_ID_RE.fullmatch(project_id):
@@ -129,7 +133,7 @@ class ProjectStateManager:
         with self._lock:
             pid = validate_project_id(project_id or f"proj-{uuid.uuid4().hex[:8]}")
             if pid in self._projects or (self.storage_dir / f"{pid}.json").exists():
-                raise ValueError(f"Project '{pid}' already exists.")
+                raise ProjectAlreadyExistsError(f"Project '{pid}' already exists.")
             now = time.time()
             posture = ProjectPosture(
                 project_id=pid,
@@ -147,7 +151,7 @@ class ProjectStateManager:
                 ],
             )
             self._projects[pid] = posture
-            self._persist_or_restore(pid, previous=None)
+            self._persist_or_restore(pid, previous=None, overwrite=False)
             return posture
 
     def get_project(self, project_id: str) -> ProjectPosture | None:
@@ -201,20 +205,29 @@ class ProjectStateManager:
         """Store strategy candidates and advance stage to STRATIFIED."""
         with self._lock:
             p = self._get_mutable_project(project_id)
+            if not candidates:
+                raise ValueError("at least one candidate is required")
             previous = p.model_copy(deep=True)
             previous_identity = (
                 candidate_execution_identity(p.selected_candidate)
                 if p.selected_candidate is not None
                 else None
             )
-            p.candidates = candidates
-            if select_best and candidates:
+            if select_best:
                 # Select candidate with highest combined feasibility + divergence score
                 best = max(
                     candidates, key=lambda c: c.feasibility_score * 0.6 + c.divergence_score * 0.4
                 )
+                for candidate in candidates:
+                    candidate.is_selected = False
                 best.is_selected = True
                 p.selected_candidate = best
+            else:
+                selected = [candidate for candidate in candidates if candidate.is_selected]
+                if len(selected) > 1:
+                    raise ValueError("at most one candidate may be selected")
+                p.selected_candidate = selected[0] if selected else None
+            p.candidates = candidates
 
             current_identity = (
                 candidate_execution_identity(p.selected_candidate)
@@ -671,6 +684,8 @@ class ProjectStateManager:
 
     def list_projects(self, limit: int = 50) -> list[ProjectPosture]:
         """List recent projects sorted by update time."""
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
+            raise ValueError("limit must be an integer between 1 and 100")
         with self._lock:
             # Sync any disk projects
             for p_file in self.storage_dir.glob("*.json"):
@@ -705,10 +720,15 @@ class ProjectStateManager:
         self,
         project_id: str,
         previous: ProjectPosture | None,
+        *,
+        overwrite: bool = True,
     ) -> None:
         """Persist one mutation or restore the manager's prior in-memory state."""
         try:
-            self._persist_project(project_id)
+            if overwrite:
+                self._persist_project(project_id)
+            else:
+                self._persist_project(project_id, overwrite=False)
         except Exception:
             if previous is None:
                 self._projects.pop(project_id, None)
@@ -716,7 +736,7 @@ class ProjectStateManager:
                 self._projects[project_id] = previous
             raise
 
-    def _persist_project(self, project_id: str) -> None:
+    def _persist_project(self, project_id: str, *, overwrite: bool = True) -> None:
         """Persist project atomically after validating its storage identity."""
         project_id = validate_project_id(project_id)
         p = self._projects.get(project_id)
@@ -738,10 +758,15 @@ class ProjectStateManager:
                 tmp.flush()
                 os.fsync(tmp.fileno())
                 tmp_path = Path(tmp.name)
-            tmp_path.replace(p_file)
+            if overwrite:
+                tmp_path.replace(p_file)
+            else:
+                # A same-filesystem hard link atomically reserves the final name.
+                # Unlike Path.replace(), it fails if another process won the race.
+                os.link(tmp_path, p_file)
+        except FileExistsError as exc:
+            raise ProjectAlreadyExistsError(f"Project '{project_id}' already exists.") from exc
         except Exception as exc:
-            if tmp_path is not None:
-                tmp_path.unlink(missing_ok=True)
             error_type = type(exc).__name__
             logger.error(
                 "Project persistence failed (%s); data-loss risk for project %s",
@@ -751,6 +776,9 @@ class ProjectStateManager:
             raise RuntimeError(
                 f"Persistence failed for project {project_id} ({error_type})"
             ) from exc
+        finally:
+            if tmp_path is not None:
+                tmp_path.unlink(missing_ok=True)
 
 
 # Global Singleton Instance
