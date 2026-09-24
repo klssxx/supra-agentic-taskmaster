@@ -1,6 +1,9 @@
 """Tests for SUPRA Project State Manager and Models."""
 
+import json
 import tempfile
+import time
+from pathlib import Path
 
 import pytest
 from supra_agentic.models import (
@@ -15,8 +18,13 @@ from supra_agentic.models import (
     TaskmasterStage,
     VerificationReport,
     candidate_execution_identity,
+    final_output_hash_matches,
 )
-from supra_agentic.state import CompletionGateError, ProjectStateManager
+from supra_agentic.state import (
+    CompletionGateError,
+    ProjectStateManager,
+    ProjectTerminalStateError,
+)
 
 
 def _secure_result(
@@ -58,6 +66,85 @@ def _verification_report(
         claim_id=identity["claim_id"],
         **kwargs,
     )
+
+
+def test_failed_project_cannot_be_reopened_by_state_mutators() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        sm = ProjectStateManager(storage_dir=tmpdir)
+        project = sm.create_project(objective="failed projects are terminal")
+        failed = sm.fail_project(project.project_id, "fatal workflow error")
+        checkpoint_count = len(failed.checkpoints)
+
+        decomposition = StructuredDecomposition(
+            domain="general",
+            core_objective="must not replay in place",
+        )
+        candidate = StrategyCandidate(
+            pathway_name="Rejected replay",
+            paradigm_type="ORTHOGONAL",
+            hypothesis="A failed project must use a new project identity.",
+            action_plan=["create a new project"],
+        )
+
+        with pytest.raises(ProjectTerminalStateError):
+            sm.update_decomposition(project.project_id, decomposition)
+        with pytest.raises(ProjectTerminalStateError):
+            sm.add_candidates(project.project_id, [candidate])
+
+        unchanged = sm.get_project(project.project_id)
+        assert unchanged is not None
+        assert unchanged.stage is TaskmasterStage.FAILED
+        assert unchanged.decomposition is None
+        assert unchanged.candidates == []
+        assert len(unchanged.checkpoints) == checkpoint_count
+
+
+def test_persistence_failure_rolls_back_in_memory_mutation(monkeypatch) -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        sm = ProjectStateManager(storage_dir=tmpdir)
+        project = sm.create_project(objective="persistence rollback contract")
+        candidate = StrategyCandidate(
+            pathway_name="Transactional state",
+            paradigm_type="ORTHOGONAL",
+            hypothesis="Memory and disk remain aligned after write failure.",
+            action_plan=["rollback the in-memory mutation"],
+        )
+
+        def fail_persistence(project_id: str) -> None:
+            raise RuntimeError(f"simulated persistence failure for {project_id}")
+
+        monkeypatch.setattr(sm, "_persist_project", fail_persistence)
+        with pytest.raises(RuntimeError, match="simulated persistence failure"):
+            sm.add_candidates(project.project_id, [candidate])
+
+        in_memory = sm.get_project(project.project_id)
+        assert in_memory is not None
+        assert in_memory.stage is TaskmasterStage.RECEIVED
+        assert in_memory.candidates == []
+        assert in_memory.selected_candidate is None
+
+        reloaded = ProjectStateManager(storage_dir=tmpdir).get_project(project.project_id)
+        assert reloaded is not None
+        assert reloaded.stage is TaskmasterStage.RECEIVED
+        assert reloaded.candidates == []
+
+
+def test_persisted_project_identity_must_match_filename() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        posture = ProjectPosture(
+            project_id="real-project",
+            objective="storage identity binding",
+            stage=TaskmasterStage.RECEIVED,
+            created_at=time.time(),
+            updated_at=time.time(),
+        )
+        Path(tmpdir, "alias-project.json").write_text(
+            posture.model_dump_json(),
+            encoding="utf-8",
+        )
+
+        manager = ProjectStateManager(storage_dir=tmpdir)
+        assert manager.get_project("alias-project") is None
 
 
 def test_project_lifecycle_transitions():
@@ -274,6 +361,121 @@ def test_completed_workflow_is_revoked_immediately_by_latest_restricted_failure(
         assert revised.final_output["completion_status"] == "BLOCKED"
         assert revised.final_output["restricted_execution_status"] == "BOUND_FAIL"
         assert revised.final_output["derived_completion_state_revalidated"] is True
+        assert final_output_hash_matches(revised.final_output)
+
+
+@pytest.mark.parametrize("verdict", ["FAIL", "NOT_EVALUATED"])
+def test_completed_workflow_is_revoked_by_latest_verification_failure(verdict: str) -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        sm = ProjectStateManager(storage_dir=tmpdir)
+        project = sm.create_project(objective="latest verification controls completion")
+        candidate = StrategyCandidate(
+            pathway_name="Current evidence path",
+            paradigm_type="ORTHOGONAL",
+            hypothesis="Current evidence must remain passing.",
+            action_plan=["bind every gate to the selected candidate"],
+        )
+        posture = sm.add_candidates(project.project_id, [candidate], select_best=True)
+        selected = posture.selected_candidate
+        assert selected is not None
+        identity = candidate_execution_identity(selected)
+        sm.record_verification(
+            project.project_id,
+            _verification_report(selected, verdict="PASS", confidence_score=1.0),
+        )
+        sm.record_restricted_execution(
+            project.project_id,
+            RestrictedExecutionResult(
+                candidate_id=identity["candidate_id"],
+                mechanism_version=identity["mechanism_version"],
+                claim_id=identity["claim_id"],
+                protocol_version="sha256:verification-revision",
+                execution_semantics_version=RESTRICTED_EXECUTION_SEMANTICS_VERSION,
+                action_type="RESTRICTED_CODE_RUN",
+                passed=True,
+                output_log="pass",
+                duration_ms=1.0,
+            ),
+        )
+        sm.record_secure_sandbox_execution(project.project_id, _secure_result(identity))
+        completed = sm.complete_project(
+            project.project_id,
+            {"workflow_status": "COMPLETED", "completion_status": "COMPLETED"},
+        )
+        assert completed.final_output is not None
+        original_hash = completed.final_output["audit_sha256"]
+        assert final_output_hash_matches(completed.final_output)
+
+        revised = sm.record_verification(
+            project.project_id,
+            _verification_report(selected, verdict=verdict, confidence_score=0.0),
+        )
+
+        assert revised.stage is TaskmasterStage.SECURE_SANDBOX_VERIFIED
+        assert revised.final_output is not None
+        assert revised.final_output["workflow_status"] == "BLOCKED"
+        assert revised.final_output["completion_status"] == "BLOCKED"
+        assert revised.final_output["verification_verdict"] == verdict
+        assert revised.final_output["superseded_audit_sha256"] == original_hash
+        assert revised.final_output["audit_sha256"] != original_hash
+        assert final_output_hash_matches(revised.final_output)
+
+
+def test_tampered_completed_payload_is_invalidated_and_downgraded_on_load() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        sm = ProjectStateManager(storage_dir=tmpdir)
+        project = sm.create_project(objective="tampered payload must not remain completed")
+        candidate = StrategyCandidate(
+            pathway_name="Integrity path",
+            paradigm_type="ORTHOGONAL",
+            hypothesis="The final payload remains integrity-addressed.",
+            action_plan=["verify the final payload hash on load"],
+        )
+        posture = sm.add_candidates(project.project_id, [candidate], select_best=True)
+        selected = posture.selected_candidate
+        assert selected is not None
+        identity = candidate_execution_identity(selected)
+        sm.record_verification(
+            project.project_id,
+            _verification_report(selected, verdict="PASS", confidence_score=1.0),
+        )
+        sm.record_restricted_execution(
+            project.project_id,
+            RestrictedExecutionResult(
+                candidate_id=identity["candidate_id"],
+                mechanism_version=identity["mechanism_version"],
+                claim_id=identity["claim_id"],
+                protocol_version="sha256:tamper-test",
+                execution_semantics_version=RESTRICTED_EXECUTION_SEMANTICS_VERSION,
+                action_type="RESTRICTED_CODE_RUN",
+                passed=True,
+                output_log="pass",
+                duration_ms=1.0,
+            ),
+        )
+        sm.record_secure_sandbox_execution(project.project_id, _secure_result(identity))
+        completed = sm.complete_project(
+            project.project_id,
+            {"workflow_status": "COMPLETED", "completion_status": "COMPLETED"},
+        )
+        assert completed.final_output is not None
+        recorded_hash = completed.final_output["audit_sha256"]
+
+        state_file = Path(tmpdir, f"{project.project_id}.json")
+        persisted = completed.model_dump()
+        persisted_output = persisted["final_output"]
+        assert isinstance(persisted_output, dict)
+        persisted_output["workflow_status"] = "TAMPERED"
+        state_file.write_text(json.dumps(persisted), encoding="utf-8")
+
+        reloaded = ProjectStateManager(storage_dir=tmpdir).get_project(project.project_id)
+        assert reloaded is not None
+        assert reloaded.stage is TaskmasterStage.SECURE_SANDBOX_VERIFIED
+        assert reloaded.final_output is not None
+        assert "audit_sha256" not in reloaded.final_output
+        assert reloaded.final_output["rejected_audit_sha256"] == recorded_hash
+        assert reloaded.final_output["integrity_status"] == "INVALIDATED_BY_REVALIDATION"
+        assert reloaded.final_output["workflow_status"] == "BLOCKED"
 
 
 @pytest.mark.parametrize("verdict", ["FAIL", "NOT_EVALUATED"])

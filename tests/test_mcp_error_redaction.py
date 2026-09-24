@@ -79,6 +79,53 @@ def test_non_object_mcp_params_and_arguments_are_invalid_params() -> None:
     }
 
 
+def test_mcp_validates_tool_argument_types_before_dispatch(monkeypatch) -> None:
+    def must_not_run(*args, **kwargs):
+        raise AssertionError("invalid arguments reached the tool")
+
+    monkeypatch.setattr(mcp_handler.taskmaster_runner, "run_golden_path", must_not_run)
+    response = mcp_handler.handle_mcp_jsonrpc_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 82,
+            "method": "tools/call",
+            "params": {
+                "name": "supra_quick_run",
+                "arguments": {"objective": 123},
+            },
+        }
+    )
+
+    assert response["error"] == {
+        "code": -32602,
+        "message": "Invalid params: objective must be a non-empty string",
+    }
+
+
+def test_mcp_rejects_unexpected_fields_for_every_public_tool(monkeypatch) -> None:
+    def must_not_run(*args, **kwargs):
+        raise AssertionError("unexpected arguments reached the tool")
+
+    monkeypatch.setattr(mcp_handler.taskmaster_runner, "run_golden_path", must_not_run)
+    response = mcp_handler.handle_mcp_jsonrpc_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 83,
+            "method": "tools/call",
+            "params": {
+                "name": "supra_quick_run",
+                "arguments": {
+                    "objective": "bounded objective",
+                    "unsupported": "ignored before this fix",
+                },
+            },
+        }
+    )
+
+    assert response["error"]["code"] == -32602
+    assert response["error"]["message"] == ("Invalid params: unsupported fields ['unsupported']")
+
+
 def test_secure_sandbox_mcp_tool_does_not_accept_remote_code() -> None:
     manifest = next(
         item for item in mcp_handler.MCP_TOOLS_MANIFEST if item["name"] == "supra_secure_sandbox"

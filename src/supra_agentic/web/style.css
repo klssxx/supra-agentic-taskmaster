@@ -170,7 +170,7 @@ body.dark-theme {
     color: var(--text-secondary);
 }
 
-textarea, select {
+textarea, select, input[type="password"] {
     background: var(--bg-input);
     border: 1px solid var(--border-subtle);
     border-radius: 8px;
@@ -181,7 +181,7 @@ textarea, select {
     transition: border-color 0.2s;
 }
 
-textarea:focus, select:focus {
+textarea:focus, select:focus, input[type="password"]:focus {
     outline: none;
     border-color: var(--accent-blue);
 }

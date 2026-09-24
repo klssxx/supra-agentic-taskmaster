@@ -28,6 +28,8 @@ from .models import (
     TaskmasterStage,
     VerificationReport,
     candidate_execution_identity,
+    final_output_audit_sha256,
+    revise_final_output_payload,
 )
 
 logger = logging.getLogger("supra_agentic.state")
@@ -36,6 +38,10 @@ PROJECT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 
 class CompletionGateError(RuntimeError):
     """Raised when workflow completion lacks required independent gate evidence."""
+
+
+class ProjectTerminalStateError(RuntimeError):
+    """Raised when callers try to replay a terminally failed project in place."""
 
 
 def validate_project_id(project_id: str) -> str:
@@ -141,7 +147,7 @@ class ProjectStateManager:
                 ],
             )
             self._projects[pid] = posture
-            self._persist_project(pid)
+            self._persist_or_restore(pid, previous=None)
             return posture
 
     def get_project(self, project_id: str) -> ProjectPosture | None:
@@ -156,6 +162,8 @@ class ProjectStateManager:
                 try:
                     data = json.loads(p_file.read_text(encoding="utf-8"))
                     posture = ProjectPosture.model_validate(data)
+                    if posture.project_id != project_id:
+                        raise ValueError("persisted project_id does not match its filename")
                     self._projects[project_id] = posture
                     return posture
                 except Exception as exc:
@@ -171,7 +179,8 @@ class ProjectStateManager:
     ) -> ProjectPosture:
         """Store decomposition and advance stage to STRUCTURED."""
         with self._lock:
-            p = self._get_required_project(project_id)
+            p = self._get_mutable_project(project_id)
+            previous = p.model_copy(deep=True)
             p.decomposition = decomp
             p.stage = TaskmasterStage.STRUCTURED
             p.updated_at = time.time()
@@ -183,7 +192,7 @@ class ProjectStateManager:
                     actor="agent:supra:decompose",
                 )
             )
-            self._persist_project(project_id)
+            self._persist_or_restore(project_id, previous)
             return p
 
     def add_candidates(
@@ -191,7 +200,8 @@ class ProjectStateManager:
     ) -> ProjectPosture:
         """Store strategy candidates and advance stage to STRATIFIED."""
         with self._lock:
-            p = self._get_required_project(project_id)
+            p = self._get_mutable_project(project_id)
+            previous = p.model_copy(deep=True)
             previous_identity = (
                 candidate_execution_identity(p.selected_candidate)
                 if p.selected_candidate is not None
@@ -215,11 +225,15 @@ class ProjectStateManager:
                 if not _verification_matches_identity(p.verification, current_identity):
                     p.verification = None
                 if p.final_output is not None:
-                    output = dict(p.final_output)
-                    output["workflow_status"] = "BLOCKED"
-                    output["completion_status"] = "BLOCKED"
-                    output["derived_completion_state_revalidated"] = True
-                    p.final_output = output
+                    p.final_output = revise_final_output_payload(
+                        p.final_output,
+                        {
+                            "workflow_status": "BLOCKED",
+                            "completion_status": "BLOCKED",
+                            "derived_completion_state_revalidated": True,
+                        },
+                        reason="SELECTED_CANDIDATE_IDENTITY_CHANGED",
+                    )
 
             p.stage = TaskmasterStage.STRATIFIED
             p.updated_at = time.time()
@@ -232,23 +246,71 @@ class ProjectStateManager:
                     actor="agent:supra:strategy",
                 )
             )
-            self._persist_project(project_id)
+            self._persist_or_restore(project_id, previous)
             return p
 
     def record_verification(self, project_id: str, report: VerificationReport) -> ProjectPosture:
         """Store verification report."""
         with self._lock:
-            p = self._get_required_project(project_id)
-            candidate = next(
-                (item for item in p.candidates if item.candidate_id == report.candidate_id),
-                None,
+            p = self._get_mutable_project(project_id)
+            previous = p.model_copy(deep=True)
+            expected = (
+                candidate_execution_identity(p.selected_candidate)
+                if p.selected_candidate is not None
+                else None
             )
-            expected = candidate_execution_identity(candidate) if candidate is not None else None
             if not _verification_matches_identity(report, expected):
                 raise ValueError(
-                    "verification report identity does not match a current candidate mechanism"
+                    "verification report identity does not match the selected candidate mechanism"
                 )
             p.verification = report
+            latest_execution = (
+                p.restricted_execution_results[-1] if p.restricted_execution_results else None
+            )
+            latest_sandbox = p.secure_sandbox_results[-1] if p.secure_sandbox_results else None
+            restricted_gate = bool(
+                latest_execution
+                and latest_execution.passed
+                and _restricted_matches_identity(latest_execution, expected)
+            )
+            sandbox_gate = bool(
+                latest_sandbox
+                and latest_sandbox.passed
+                and _sandbox_matches_identity(latest_sandbox, expected)
+                and latest_sandbox.isolation_verified
+            )
+            verification_gate = report.verdict in {"PASS", "CONDITIONAL_PASS"}
+            completion_revoked = p.stage is TaskmasterStage.COMPLETED and not verification_gate
+            if completion_revoked:
+                p.stage = (
+                    TaskmasterStage.SECURE_SANDBOX_VERIFIED
+                    if sandbox_gate
+                    else TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED
+                    if restricted_gate
+                    else TaskmasterStage.STRATIFIED
+                )
+
+            if p.final_output is not None:
+                provenance_raw = p.final_output.get("evidence_provenance")
+                provenance = dict(provenance_raw) if isinstance(provenance_raw, dict) else {}
+                provenance["verification_report_id"] = report.report_id
+                updates: dict[str, Any] = {
+                    "verification_verdict": report.verdict,
+                    "evidence_provenance": provenance,
+                }
+                if completion_revoked:
+                    updates.update(
+                        {
+                            "workflow_status": "BLOCKED",
+                            "completion_status": "BLOCKED",
+                            "derived_completion_state_revalidated": True,
+                        }
+                    )
+                p.final_output = revise_final_output_payload(
+                    p.final_output,
+                    updates,
+                    reason="VERIFICATION_EVIDENCE_RECORDED",
+                )
             p.updated_at = time.time()
             p.checkpoints.append(
                 CheckpointRecord(
@@ -263,7 +325,7 @@ class ProjectStateManager:
                     actor="agent:supra:verifier",
                 )
             )
-            self._persist_project(project_id)
+            self._persist_or_restore(project_id, previous)
             return p
 
     def record_restricted_execution(
@@ -271,7 +333,8 @@ class ProjectStateManager:
     ) -> ProjectPosture:
         """Record trusted restricted preflight without claiming process isolation."""
         with self._lock:
-            p = self._get_required_project(project_id)
+            p = self._get_mutable_project(project_id)
+            previous = p.model_copy(deep=True)
             expected = (
                 candidate_execution_identity(p.selected_candidate)
                 if p.selected_candidate is not None
@@ -307,12 +370,6 @@ class ProjectStateManager:
                         if p.decomposition is not None
                         else TaskmasterStage.RECEIVED
                     )
-                    if p.final_output is not None:
-                        output = dict(p.final_output)
-                        output["workflow_status"] = "BLOCKED"
-                        output["completion_status"] = "BLOCKED"
-                        output["derived_completion_state_revalidated"] = True
-                        p.final_output = output
                 elif p.stage is not TaskmasterStage.COMPLETED:
                     p.stage = (
                         TaskmasterStage.SECURE_SANDBOX_VERIFIED
@@ -321,17 +378,36 @@ class ProjectStateManager:
                     )
 
             if p.final_output is not None:
-                output = dict(p.final_output)
-                output["restricted_execution_identity_bound"] = result.identity_bound
-                output["restricted_execution_status"] = (
-                    "BOUND_PASS"
-                    if restricted_gate
-                    else "BOUND_FAIL"
-                    if result.identity_bound
-                    else "UNBOUND"
+                provenance_raw = p.final_output.get("evidence_provenance")
+                provenance = dict(provenance_raw) if isinstance(provenance_raw, dict) else {}
+                provenance["restricted_execution_ids"] = [
+                    item.execution_id for item in p.restricted_execution_results
+                ]
+                updates: dict[str, Any] = {
+                    "restricted_execution_identity_bound": result.identity_bound,
+                    "restricted_execution_status": (
+                        "BOUND_PASS"
+                        if restricted_gate
+                        else "BOUND_FAIL"
+                        if result.identity_bound
+                        else "UNBOUND"
+                    ),
+                    "derived_execution_state_revalidated": True,
+                    "evidence_provenance": provenance,
+                }
+                if not restricted_gate:
+                    updates.update(
+                        {
+                            "workflow_status": "BLOCKED",
+                            "completion_status": "BLOCKED",
+                            "derived_completion_state_revalidated": True,
+                        }
+                    )
+                p.final_output = revise_final_output_payload(
+                    p.final_output,
+                    updates,
+                    reason="RESTRICTED_EXECUTION_EVIDENCE_RECORDED",
                 )
-                output["derived_execution_state_revalidated"] = True
-                p.final_output = output
 
             p.updated_at = time.time()
             p.checkpoints.append(
@@ -346,7 +422,7 @@ class ProjectStateManager:
                     actor="agent:supra:restricted-executor",
                 )
             )
-            self._persist_project(project_id)
+            self._persist_or_restore(project_id, previous)
             return p
 
     def record_secure_sandbox_execution(
@@ -354,7 +430,8 @@ class ProjectStateManager:
     ) -> ProjectPosture:
         """Record an externally isolated sandbox receipt and derive its gate state."""
         with self._lock:
-            p = self._get_required_project(project_id)
+            p = self._get_mutable_project(project_id)
+            previous = p.model_copy(deep=True)
             expected = (
                 candidate_execution_identity(p.selected_candidate)
                 if p.selected_candidate is not None
@@ -398,25 +475,43 @@ class ProjectStateManager:
                         if p.decomposition is not None
                         else TaskmasterStage.RECEIVED
                     )
-                    if p.final_output is not None:
-                        output = dict(p.final_output)
-                        output["workflow_status"] = "BLOCKED"
-                        output["completion_status"] = "BLOCKED"
-                        output["derived_completion_state_revalidated"] = True
-                        p.final_output = output
 
             if p.final_output is not None:
-                output = dict(p.final_output)
-                output["secure_sandbox_identity_bound"] = result.identity_bound
-                output["secure_sandbox_isolation_verified"] = result.isolation_verified
-                output["secure_sandbox_status"] = (
-                    "IDENTITY_BOUND_ISOLATION_PASS"
-                    if sandbox_gate
-                    else "IDENTITY_BOUND_ISOLATION_FAIL"
-                    if result.identity_bound and result.isolation_verified
-                    else "UNVERIFIED_ISOLATION"
+                provenance_raw = p.final_output.get("evidence_provenance")
+                provenance = dict(provenance_raw) if isinstance(provenance_raw, dict) else {}
+                provenance["secure_sandbox_execution_ids"] = [
+                    item.execution_id for item in p.secure_sandbox_results
+                ]
+                updates: dict[str, Any] = {
+                    "secure_sandbox_identity_bound": result.identity_bound,
+                    "secure_sandbox_isolation_verified": result.isolation_verified,
+                    "secure_sandbox_execution_scope": result.execution_scope,
+                    "candidate_mechanism_executed_in_secure_sandbox": (
+                        result.candidate_mechanism_executed
+                    ),
+                    "secure_sandbox_status": (
+                        "IDENTITY_BOUND_ISOLATION_PASS"
+                        if sandbox_gate
+                        else "IDENTITY_BOUND_ISOLATION_FAIL"
+                        if result.identity_bound and result.isolation_verified
+                        else "UNVERIFIED_ISOLATION"
+                    ),
+                    "derived_execution_state_revalidated": True,
+                    "evidence_provenance": provenance,
+                }
+                if not sandbox_gate:
+                    updates.update(
+                        {
+                            "workflow_status": "BLOCKED",
+                            "completion_status": "BLOCKED",
+                            "derived_completion_state_revalidated": True,
+                        }
+                    )
+                p.final_output = revise_final_output_payload(
+                    p.final_output,
+                    updates,
+                    reason="SECURE_SANDBOX_EVIDENCE_RECORDED",
                 )
-                p.final_output = output
 
             p.updated_at = time.time()
             p.checkpoints.append(
@@ -434,13 +529,14 @@ class ProjectStateManager:
                     actor="agent:supra:secure-sandbox",
                 )
             )
-            self._persist_project(project_id)
+            self._persist_or_restore(project_id, previous)
             return p
 
     def complete_project(self, project_id: str, final_output: dict[str, Any]) -> ProjectPosture:
         """Complete only when verification, preflight, and identity-bound isolation gates pass."""
         with self._lock:
-            p = self._get_required_project(project_id)
+            p = self._get_mutable_project(project_id)
+            previous = p.model_copy(deep=True)
             expected = (
                 candidate_execution_identity(p.selected_candidate)
                 if p.selected_candidate is not None
@@ -505,7 +601,7 @@ class ProjectStateManager:
                         actor="system:completion_gate",
                     )
                 )
-                self._persist_project(project_id)
+                self._persist_or_restore(project_id, previous)
                 raise CompletionGateError(
                     "Completion requires verification PASS/CONDITIONAL_PASS, "
                     "current BOUND_PASS restricted preflight, and current "
@@ -527,6 +623,14 @@ class ProjectStateManager:
             payload["candidate_mechanism_executed_in_secure_sandbox"] = bool(
                 latest_sandbox and latest_sandbox.candidate_mechanism_executed
             )
+            for stale_key in (
+                "audit_sha256",
+                "rejected_audit_sha256",
+                "integrity_invalidation_reason",
+            ):
+                payload.pop(stale_key, None)
+            payload["integrity_status"] = "CURRENT"
+            payload["audit_sha256"] = final_output_audit_sha256(payload)
             p.final_output = payload
             p.stage = TaskmasterStage.COMPLETED
             p.updated_at = time.time()
@@ -543,13 +647,14 @@ class ProjectStateManager:
                     actor="agent:supra:coordinator",
                 )
             )
-            self._persist_project(project_id)
+            self._persist_or_restore(project_id, previous)
             return p
 
     def fail_project(self, project_id: str, error_message: str) -> ProjectPosture:
         """Mark project as FAILED."""
         with self._lock:
             p = self._get_required_project(project_id)
+            previous = p.model_copy(deep=True)
             p.error_message = error_message
             p.stage = TaskmasterStage.FAILED
             p.updated_at = time.time()
@@ -561,7 +666,7 @@ class ProjectStateManager:
                     actor="system:safety_guard",
                 )
             )
-            self._persist_project(project_id)
+            self._persist_or_restore(project_id, previous)
             return p
 
     def list_projects(self, limit: int = 50) -> list[ProjectPosture]:
@@ -587,6 +692,30 @@ class ProjectStateManager:
             raise KeyError(f"Project '{project_id}' not found.")
         return p
 
+    def _get_mutable_project(self, project_id: str) -> ProjectPosture:
+        """Return project state while keeping FAILED terminal and replay-safe."""
+        project = self._get_required_project(project_id)
+        if project.stage is TaskmasterStage.FAILED:
+            raise ProjectTerminalStateError(
+                f"Project '{project_id}' is FAILED; create a new project ID to retry."
+            )
+        return project
+
+    def _persist_or_restore(
+        self,
+        project_id: str,
+        previous: ProjectPosture | None,
+    ) -> None:
+        """Persist one mutation or restore the manager's prior in-memory state."""
+        try:
+            self._persist_project(project_id)
+        except Exception:
+            if previous is None:
+                self._projects.pop(project_id, None)
+            else:
+                self._projects[project_id] = previous
+            raise
+
     def _persist_project(self, project_id: str) -> None:
         """Persist project atomically after validating its storage identity."""
         project_id = validate_project_id(project_id)
@@ -594,6 +723,7 @@ class ProjectStateManager:
         if not p:
             logger.error(f"Cannot persist non-existent project {project_id}")
             return
+        tmp_path: Path | None = None
         try:
             p_file = self.storage_dir / f"{project_id}.json"
             with tempfile.NamedTemporaryFile(
@@ -605,9 +735,13 @@ class ProjectStateManager:
                 delete=False,
             ) as tmp:
                 tmp.write(p.model_dump_json(indent=2))
+                tmp.flush()
+                os.fsync(tmp.fileno())
                 tmp_path = Path(tmp.name)
             tmp_path.replace(p_file)
         except Exception as exc:
+            if tmp_path is not None:
+                tmp_path.unlink(missing_ok=True)
             error_type = type(exc).__name__
             logger.error(
                 "Project persistence failed (%s); data-loss risk for project %s",

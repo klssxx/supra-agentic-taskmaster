@@ -10,6 +10,14 @@ function escapeHtml(value) {
     })[ch]);
 }
 
+function apiFetch(url, options = {}) {
+    const headers = new Headers(options.headers || {});
+    const apiKeyInput = document.getElementById('api-key-input');
+    const apiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
+    if (apiKey) headers.set('X-API-Key', apiKey);
+    return fetch(url, { ...options, headers });
+}
+
 async function handleRunTask(event) {
     event.preventDefault();
     const objective = document.getElementById('objective-input').value.trim();
@@ -21,7 +29,7 @@ async function handleRunTask(event) {
     setUIState('RUNNING', 'RECEIVED');
     
     try {
-        const response = await fetch('/api/v1/projects', {
+        const response = await apiFetch('/api/v1/projects', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -50,7 +58,7 @@ async function handleExampleRun() {
     setUIState('RUNNING', 'RECEIVED');
     
     try {
-        const response = await fetch('/api/v1/examples/quick-run');
+        const response = await apiFetch('/api/v1/examples/quick-run');
         if (!response.ok) throw new Error('Example endpoint failed');
         
         const data = await response.json();
@@ -208,7 +216,8 @@ function renderProjectPosture(posture) {
 async function handleExportDossier() {
     if (!currentProjectId) return;
     try {
-        const res = await fetch(`/api/v1/export/dossier/${encodeURIComponent(currentProjectId)}`);
+        const res = await apiFetch(`/api/v1/export/dossier/${encodeURIComponent(currentProjectId)}`);
+        if (!res.ok) throw new Error('Markdown export request failed');
         const data = await res.json();
         
         const blob = new Blob([data.markdown_dossier], { type: 'text/markdown' });
@@ -217,6 +226,7 @@ async function handleExportDossier() {
         a.href = url;
         a.download = `SUPRA_DOSSIER_${currentProjectId}.md`;
         a.click();
+        URL.revokeObjectURL(url);
     } catch (exc) {
         alert('Export error: ' + exc.message);
     }
@@ -224,12 +234,25 @@ async function handleExportDossier() {
 
 async function handleExportHtmlDossier() {
     if (!currentProjectId) return;
-    window.open(`/api/v1/export/dossier/html/${encodeURIComponent(currentProjectId)}`, '_blank');
+    try {
+        const res = await apiFetch(`/api/v1/export/dossier/html/${encodeURIComponent(currentProjectId)}`);
+        if (!res.ok) throw new Error('HTML export request failed');
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `SUPRA_DOSSIER_${currentProjectId}.html`;
+        a.click();
+        URL.revokeObjectURL(url);
+    } catch (exc) {
+        alert('Export error: ' + exc.message);
+    }
 }
 
 async function loadRecentProjects() {
     try {
-        const res = await fetch('/api/v1/projects?limit=5');
+        const res = await apiFetch('/api/v1/projects?limit=5');
+        if (!res.ok) throw new Error('Recent projects request failed');
         const data = await res.json();
         const list = document.getElementById('recent-list');
         if (!data.projects || data.projects.length === 0) return;
@@ -257,7 +280,8 @@ async function loadRecentProjects() {
 
 async function loadProjectById(id) {
     try {
-        const res = await fetch(`/api/v1/projects/${encodeURIComponent(id)}`);
+        const res = await apiFetch(`/api/v1/projects/${encodeURIComponent(id)}`);
+        if (!res.ok) throw new Error('Project request failed');
         const data = await res.json();
         currentProjectId = id;
         document.getElementById('objective-input').value = data.posture.objective;

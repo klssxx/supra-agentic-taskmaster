@@ -26,6 +26,7 @@ from .models import (
     TaskmasterStage,
     VerificationReport,
     candidate_execution_identity,
+    final_output_audit_sha256,
 )
 from .sandbox import (
     SECURE_SANDBOX_SUCCESS_MARKER,
@@ -828,6 +829,7 @@ def record_checkpoint(
             "transformation": "record_checkpoint_payload_v2",
         },
         "integrity_semantics": "SHA256_OF_SERIALIZED_PAYLOAD_NOT_TRUTH",
+        "integrity_status": "CURRENT",
         "checkpoints_count": len(posture.checkpoints) + 1,
         "timestamp": time.time(),
     }
@@ -835,8 +837,7 @@ def record_checkpoint(
         payload["model_assistance"] = provider_metadata
 
     # Generate SHA-256 integrity hash
-    raw_bytes = json.dumps(payload, sort_keys=True).encode("utf-8")
-    payload["audit_sha256"] = hashlib.sha256(raw_bytes).hexdigest()
+    payload["audit_sha256"] = final_output_audit_sha256(payload)
 
     completed = state_manager.complete_project(project_id, payload)
 

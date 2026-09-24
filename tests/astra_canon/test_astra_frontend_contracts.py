@@ -82,3 +82,16 @@ def test_frontend_wires_current_restricted_and_secure_sandbox_stages() -> None:
     assert "SANDBOX_VERIFIED" not in canvas.replace("SECURE_SANDBOX_VERIFIED", "")
     assert "Synthetic Fuzz" not in canvas
     assert "window.causalCanvasInstance = new CausalCanvas" in canvas
+
+
+def test_remote_ui_can_supply_api_auth_without_putting_secrets_in_urls() -> None:
+    app = _read("src/supra_agentic/web/app.js")
+    index = _read("src/supra_agentic/web/index.html")
+
+    assert 'type="password"' in index
+    assert 'id="api-key-input"' in index
+    assert "function apiFetch(url, options = {})" in app
+    assert "headers.set('X-API-Key', apiKey)" in app
+    assert "return fetch(url, { ...options, headers });" in app
+    assert "fetch('/api/v1" not in app
+    assert "window.open(`/api/v1/export" not in app
