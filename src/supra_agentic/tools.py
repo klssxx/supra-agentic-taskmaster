@@ -12,12 +12,14 @@ import hashlib
 import io
 import json
 import logging
+import os
 import time
 from typing import Any, Literal
 
 from .models import (
     RESTRICTED_EXECUTION_SEMANTICS_VERSION,
     RestrictedExecutionResult,
+    SecureSandboxResult,
     StrategyCandidate,
     StructuredDecomposition,
     Subtask,
@@ -25,6 +27,7 @@ from .models import (
     VerificationReport,
     candidate_execution_identity,
 )
+from .sandbox import SandboxUnavailableError, run_python_in_secure_docker
 from .state import state_manager
 
 logger = logging.getLogger("supra_agentic.tools")
@@ -91,6 +94,15 @@ def decompose_objective(
                 "this is not process isolation and does not accept untrusted code."
             ),
             stage_target=TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED,
+            status="PENDING",
+        ),
+        Subtask(
+            title="Execute Secure Sandbox Verification",
+            description=(
+                "Run the canonical completion protocol in an externally isolated "
+                "Docker container. Missing isolation keeps completion blocked."
+            ),
+            stage_target=TaskmasterStage.SECURE_SANDBOX_VERIFIED,
             status="PENDING",
         ),
     ]
@@ -300,8 +312,11 @@ def verify_solution(
             f"{len(not_evaluated)} NOT_EVALUATED."
         )
 
+    verification_identity = candidate_execution_identity(target_candidate)
     report = VerificationReport(
         candidate_id=target_candidate.candidate_id,
+        mechanism_version=verification_identity["mechanism_version"],
+        claim_id=verification_identity["claim_id"],
         invariants_preserved=invariants_preserved,
         invariants_checked=invariants,
         vulnerabilities_detected=[f["invariant"] for f in failures],
@@ -577,7 +592,78 @@ def restricted_python_executor(
 
 
 # ---------------------------------------------------------------------------
-# Tool 5: record_checkpoint
+# Tool 5: secure external sandbox (identity-bound isolation gate)
+# ---------------------------------------------------------------------------
+def _canonical_secure_sandbox_code(identity: dict[str, str]) -> str:
+    """Return an identity-bound isolation smoke, not candidate mechanism execution."""
+    payload = json.dumps(identity, sort_keys=True, ensure_ascii=True)
+    return (
+        "import json\n"
+        f"identity = json.loads({json.dumps(payload)})\n"
+        "assert identity['candidate_id']\n"
+        "assert identity['mechanism_version'].startswith('sha256:')\n"
+        "assert identity['claim_id'].startswith('claim-')\n"
+        "print('SUPRA_SECURE_SANDBOX_OK')\n"
+    )
+
+
+def secure_sandbox_executor(project_id: str) -> dict[str, Any]:
+    """Run an identity-bound isolation smoke in a fail-closed Docker sandbox.
+
+    The public tool accepts no code snippet. The executed source is generated
+    only from the persisted selected-candidate identity and does not execute the
+    candidate mechanism, action plan, or hypothesis. Docker/image unavailability
+    is recorded as UNKNOWN and cannot satisfy workflow completion.
+    """
+    identity = _selected_candidate_identity(project_id)
+    if identity is None:
+        raise ValueError("secure sandbox requires a persisted selected candidate")
+
+    code = _canonical_secure_sandbox_code(identity)
+    started = time.monotonic()
+    try:
+        result = run_python_in_secure_docker(code, identity=identity)
+    except (SandboxUnavailableError, ValueError, OSError) as exc:
+        duration_ms = (time.monotonic() - started) * 1000
+        result = SecureSandboxResult(
+            candidate_id=identity["candidate_id"],
+            mechanism_version=identity["mechanism_version"],
+            claim_id=identity["claim_id"],
+            protocol_version=None,
+            image=os.getenv("SUPRA_SANDBOX_IMAGE", "").strip() or "UNCONFIGURED",
+            image_id=None,
+            passed=False,
+            observed_result="UNKNOWN",
+            exit_code=None,
+            output_log="Secure sandbox unavailable; completion remains blocked.",
+            error_type=type(exc).__name__,
+            duration_ms=round(duration_ms, 2),
+            timed_out=False,
+        )
+
+    posture = state_manager.record_secure_sandbox_execution(project_id, result)
+    sandbox_status = (
+        "IDENTITY_BOUND_ISOLATION_PASS"
+        if result.passed and result.identity_bound and result.isolation_verified
+        else "IDENTITY_BOUND_ISOLATION_FAIL"
+        if result.identity_bound and result.isolation_verified
+        else "UNVERIFIED_ISOLATION"
+    )
+    return {
+        "status": "success" if sandbox_status == "IDENTITY_BOUND_ISOLATION_PASS" else "blocked",
+        "project_id": project_id,
+        "stage": posture.stage.value,
+        "secure_sandbox_status": sandbox_status,
+        "secure_sandbox_execution_scope": result.execution_scope,
+        "candidate_mechanism_executed_in_secure_sandbox": (
+            result.candidate_mechanism_executed
+        ),
+        "secure_sandbox_result": result.model_dump(),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Tool 6: record_checkpoint
 # ---------------------------------------------------------------------------
 def record_checkpoint(
     project_id: str,
@@ -589,8 +675,9 @@ def record_checkpoint(
 ) -> dict[str, Any]:
     """Finalize the workflow and issue an integrity-addressed deliverable ledger.
 
-    Completion, coverage verification, restricted execution and scientific
-    validation are separate statuses. SHA-256 protects payload integrity only.
+    Completion, coverage verification, restricted preflight, secure sandbox,
+    and scientific validation are separate statuses. SHA-256 protects payload
+    integrity only.
 
     Args:
         project_id: The unique project identifier.
@@ -615,6 +702,9 @@ def record_checkpoint(
     latest_execution = (
         posture.restricted_execution_results[-1] if posture.restricted_execution_results else None
     )
+    latest_sandbox = (
+        posture.secure_sandbox_results[-1] if posture.secure_sandbox_results else None
+    )
     restricted_execution_status = (
         "BOUND_PASS"
         if latest_execution and latest_execution.passed and latest_execution.identity_bound
@@ -624,6 +714,20 @@ def record_checkpoint(
         if latest_execution
         else "NOT_RUN"
     )
+    secure_sandbox_status = (
+        "IDENTITY_BOUND_ISOLATION_PASS"
+        if latest_sandbox
+        and latest_sandbox.passed
+        and latest_sandbox.identity_bound
+        and latest_sandbox.isolation_verified
+        else "IDENTITY_BOUND_ISOLATION_FAIL"
+        if latest_sandbox
+        and latest_sandbox.identity_bound
+        and latest_sandbox.isolation_verified
+        else "UNVERIFIED_ISOLATION"
+        if latest_sandbox
+        else "NOT_RUN"
+    )
     verification_verdict = posture.verification.verdict if posture.verification else "NOT_EVALUATED"
     opportunity_accounting = {
         "candidate_opportunities": len(posture.candidates),
@@ -631,6 +735,7 @@ def record_checkpoint(
         "selected_candidates": 1 if posture.selected_candidate else 0,
         "verification_reports": 1 if posture.verification else 0,
         "restricted_execution_attempts": len(posture.restricted_execution_results),
+        "secure_sandbox_attempts": len(posture.secure_sandbox_results),
         "provider_generation_calls": None,
         "provider_generation_calls_authoritative": False,
         "budget_complete": False,
@@ -644,6 +749,10 @@ def record_checkpoint(
         "restricted_protocol_version": (
             latest_execution.protocol_version if latest_execution else None
         ),
+        "secure_sandbox_protocol_version": (
+            latest_sandbox.protocol_version if latest_sandbox else None
+        ),
+        "secure_sandbox_image_id": latest_sandbox.image_id if latest_sandbox else None,
         "provider_metadata_present": provider_metadata is not None,
         "known_unclosed_dependencies": [
             "code_version",
@@ -685,6 +794,19 @@ def record_checkpoint(
         "restricted_execution_identity_bound": bool(
             latest_execution and latest_execution.identity_bound
         ),
+        "secure_sandbox_status": secure_sandbox_status,
+        "secure_sandbox_identity_bound": bool(
+            latest_sandbox and latest_sandbox.identity_bound
+        ),
+        "secure_sandbox_isolation_verified": bool(
+            latest_sandbox and latest_sandbox.isolation_verified
+        ),
+        "secure_sandbox_execution_scope": (
+            latest_sandbox.execution_scope if latest_sandbox else "NOT_RUN"
+        ),
+        "candidate_mechanism_executed_in_secure_sandbox": bool(
+            latest_sandbox and latest_sandbox.candidate_mechanism_executed
+        ),
         "scientific_status": "NOT_VALIDATED",
         "discriminant_protocol_status": "NOT_ESTABLISHED",
         "independent_confirmation_status": "NOT_ESTABLISHED",
@@ -698,6 +820,9 @@ def record_checkpoint(
             ),
             "restricted_execution_ids": [
                 item.execution_id for item in posture.restricted_execution_results
+            ],
+            "secure_sandbox_execution_ids": [
+                item.execution_id for item in posture.secure_sandbox_results
             ],
             "scope": "SUPRA_WORKFLOW_TELEMETRY",
             "transformation": "record_checkpoint_payload_v2",
@@ -719,7 +844,7 @@ def record_checkpoint(
         "status": "success",
         "project_id": project_id,
         "stage": completed.stage.value,
-        "final_deliverable": payload,
+        "final_deliverable": completed.final_output or payload,
     }
 
 
@@ -729,5 +854,6 @@ SUPRA_TOOLS = [
     synthesize_strategy,
     verify_solution,
     restricted_python_executor,
+    secure_sandbox_executor,
     record_checkpoint,
 ]

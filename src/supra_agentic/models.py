@@ -4,23 +4,33 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import time
 import uuid
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
 
 RESTRICTED_EXECUTION_SEMANTICS_VERSION = 2
+SECURE_SANDBOX_SEMANTICS_VERSION = 1
+
+_SHA256_REF_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+
+
+def is_sha256_ref(value: object) -> bool:
+    """Return True only for canonical lowercase sha256:<64 hex> references."""
+    return isinstance(value, str) and _SHA256_REF_RE.fullmatch(value) is not None
 
 
 class TaskmasterStage(str, Enum):
-    """5 Canonical Stages of the Taskmaster Agent Lifecycle."""
+    """Canonical stages of the Taskmaster lifecycle."""
 
     RECEIVED = "RECEIVED"
     STRUCTURED = "STRUCTURED"
     STRATIFIED = "STRATIFIED"
     RESTRICTED_EXECUTION_VERIFIED = "RESTRICTED_EXECUTION_VERIFIED"
+    SECURE_SANDBOX_VERIFIED = "SECURE_SANDBOX_VERIFIED"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
 
@@ -93,6 +103,8 @@ class VerificationReport(BaseModel):
     model_config = ConfigDict(extra="forbid")
     report_id: str = Field(default_factory=lambda: f"rep-{uuid.uuid4().hex[:6]}")
     candidate_id: str
+    mechanism_version: str | None = None
+    claim_id: str | None = None
     invariants_preserved: bool = False
     invariants_checked: list[str] = Field(default_factory=list)
     vulnerabilities_detected: list[str] = Field(default_factory=list)
@@ -122,16 +134,16 @@ class RestrictedExecutionResult(BaseModel):
     protocol_version: str | None = None
     observed_result: str | None = None
     action_type: str
-    passed: bool
+    passed: StrictBool
     output_log: str
     error_type: str | None = None
     duration_ms: float
-    side_effects_contained: bool = False
+    side_effects_contained: StrictBool = False
     execution_classification: str = "RESTRICTED_EXECUTION"
     result_scope: str = "RESTRICTED_EXECUTION_ONLY"
-    scientific_validation: bool = False
-    process_isolated: bool = False
-    secure_for_untrusted_code: bool = False
+    scientific_validation: StrictBool = False
+    process_isolated: StrictBool = False
+    secure_for_untrusted_code: StrictBool = False
     identity_bound: bool = False
     timestamp: float = Field(default_factory=time.time)
 
@@ -162,8 +174,101 @@ class RestrictedExecutionResult(BaseModel):
             )
         )
         self.identity_bound = bool(
-            complete and self.execution_semantics_version == RESTRICTED_EXECUTION_SEMANTICS_VERSION
+            complete
+            and is_sha256_ref(self.protocol_version)
+            and self.execution_semantics_version == RESTRICTED_EXECUTION_SEMANTICS_VERSION
         )
+        return self
+
+
+class SecureSandboxResult(BaseModel):
+    """Receipt from an externally isolated identity-bound protocol smoke.
+
+    The receipt establishes configured container-isolation controls and that the
+    identity-bound smoke protocol executed. It does not execute the selected
+    candidate mechanism, action plan, or hypothesis, and it does not claim
+    scientific validation or perfect security against kernel/runtime flaws.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    execution_id: str = Field(default_factory=lambda: f"sbx-{uuid.uuid4().hex[:8]}")
+    execution_semantics_version: int = SECURE_SANDBOX_SEMANTICS_VERSION
+    candidate_id: str | None = None
+    mechanism_version: str | None = None
+    claim_id: str | None = None
+    protocol_version: str | None = None
+    backend: Literal["docker"] = "docker"
+    image: str
+    image_id: str | None = None
+    action_type: Literal["SECURE_CONTAINER_PYTHON"] = "SECURE_CONTAINER_PYTHON"
+    execution_scope: Literal["IDENTITY_BOUNDARY_SMOKE_ONLY"] = (
+        "IDENTITY_BOUNDARY_SMOKE_ONLY"
+    )
+    candidate_mechanism_executed: Literal[False] = False
+    passed: StrictBool
+    observed_result: Literal["PASS", "FAIL", "UNKNOWN"]
+    exit_code: int | None = None
+    output_log: str = ""
+    error_type: str | None = None
+    duration_ms: float = Field(ge=0.0)
+    timed_out: StrictBool = False
+    network_isolated: StrictBool = False
+    read_only_root: StrictBool = False
+    capabilities_dropped: StrictBool = False
+    no_new_privileges: StrictBool = False
+    non_root_user: StrictBool = False
+    resource_limits_applied: StrictBool = False
+    identity_bound: bool = False
+    isolation_verified: bool = False
+    security_scope: Literal["CONTAINER_ISOLATION_CONTROLS_ONLY"] = (
+        "CONTAINER_ISOLATION_CONTROLS_ONLY"
+    )
+    scientific_validation: StrictBool = False
+    timestamp: float = Field(default_factory=time.time)
+
+    @field_validator("scientific_validation")
+    @classmethod
+    def reject_scientific_validation_claim(cls, value: bool) -> bool:
+        if value:
+            raise ValueError("sandbox execution cannot claim scientific validation")
+        return value
+
+    @model_validator(mode="after")
+    def derive_security_and_identity(self) -> "SecureSandboxResult":
+        identity_complete = all(
+            isinstance(value, str) and bool(value.strip())
+            for value in (
+                self.candidate_id,
+                self.mechanism_version,
+                self.claim_id,
+                self.protocol_version,
+                self.execution_id,
+            )
+        )
+        protocol_bound = is_sha256_ref(self.protocol_version)
+        image_bound = is_sha256_ref(self.image_id)
+        self.identity_bound = bool(
+            identity_complete
+            and protocol_bound
+            and image_bound
+            and self.execution_semantics_version == SECURE_SANDBOX_SEMANTICS_VERSION
+        )
+        self.isolation_verified = bool(
+            self.backend == "docker"
+            and image_bound
+            and self.network_isolated
+            and self.read_only_root
+            and self.capabilities_dropped
+            and self.no_new_privileges
+            and self.non_root_user
+            and self.resource_limits_applied
+        )
+        if self.passed and self.observed_result != "PASS":
+            raise ValueError("passed sandbox execution must report observed_result=PASS")
+        if not self.passed and self.observed_result == "PASS":
+            raise ValueError("failed sandbox execution cannot report observed_result=PASS")
+        if self.passed and self.timed_out:
+            raise ValueError("timed out sandbox execution cannot pass")
         return self
 
 
@@ -243,37 +348,61 @@ class ProjectPosture(BaseModel):
         return migrated
 
     @model_validator(mode="after")
-    def revalidate_persisted_execution_accreditation(self) -> ProjectPosture:
-        """Revalidate execution-derived state on every load/restart.
-
-        Workflow completion is historical and is not erased. Execution binding,
-        however, is derived state: it must still match the persisted selected
-        candidate under the current semantics. Cached/final-output execution
-        labels are recomputed from that revalidated source state.
-        """
+    def revalidate_persisted_execution_accreditation(self) -> "ProjectPosture":
+        """Revalidate all completion-bearing gates on every load/restart."""
         expected = (
             candidate_execution_identity(self.selected_candidate)
             if self.selected_candidate is not None
             else None
         )
-        for result in self.restricted_execution_results:
-            matches_selected_candidate = bool(
-                result.identity_bound
+
+        for restricted_result in self.restricted_execution_results:
+            restricted_result.identity_bound = bool(
+                restricted_result.identity_bound
                 and expected is not None
-                and result.candidate_id == expected["candidate_id"]
-                and result.mechanism_version == expected["mechanism_version"]
-                and result.claim_id == expected["claim_id"]
-                and isinstance(result.protocol_version, str)
-                and result.protocol_version.startswith("sha256:")
+                and restricted_result.candidate_id == expected["candidate_id"]
+                and restricted_result.mechanism_version == expected["mechanism_version"]
+                and restricted_result.claim_id == expected["claim_id"]
+                and is_sha256_ref(restricted_result.protocol_version)
             )
-            result.identity_bound = matches_selected_candidate
+
+        for sandbox_result in self.secure_sandbox_results:
+            sandbox_result.identity_bound = bool(
+                sandbox_result.identity_bound
+                and expected is not None
+                and sandbox_result.candidate_id == expected["candidate_id"]
+                and sandbox_result.mechanism_version == expected["mechanism_version"]
+                and sandbox_result.claim_id == expected["claim_id"]
+                and is_sha256_ref(sandbox_result.protocol_version)
+                and is_sha256_ref(sandbox_result.image_id)
+            )
 
         latest_execution = (
-            self.restricted_execution_results[-1] if self.restricted_execution_results else None
+            self.restricted_execution_results[-1]
+            if self.restricted_execution_results
+            else None
         )
-        latest_authoritative_bound_pass = bool(
+        latest_sandbox = (
+            self.secure_sandbox_results[-1] if self.secure_sandbox_results else None
+        )
+        restricted_gate = bool(
             latest_execution and latest_execution.passed and latest_execution.identity_bound
         )
+        sandbox_gate = bool(
+            latest_sandbox
+            and latest_sandbox.passed
+            and latest_sandbox.identity_bound
+            and latest_sandbox.isolation_verified
+        )
+        verification_gate = bool(
+            self.verification is not None
+            and expected is not None
+            and self.verification.candidate_id == expected["candidate_id"]
+            and self.verification.mechanism_version == expected["mechanism_version"]
+            and self.verification.claim_id == expected["claim_id"]
+            and self.verification.verdict in {"PASS", "CONDITIONAL_PASS"}
+        )
+
         if self.final_output is not None:
             output = dict(self.final_output)
             output["restricted_execution_identity_bound"] = bool(
@@ -281,11 +410,34 @@ class ProjectPosture(BaseModel):
             )
             output["restricted_execution_status"] = (
                 "BOUND_PASS"
-                if latest_execution and latest_execution.passed and latest_execution.identity_bound
+                if restricted_gate
                 else "BOUND_FAIL"
                 if latest_execution and latest_execution.identity_bound
                 else "UNBOUND"
                 if latest_execution
+                else "NOT_RUN"
+            )
+            output["secure_sandbox_identity_bound"] = bool(
+                latest_sandbox and latest_sandbox.identity_bound
+            )
+            output["secure_sandbox_isolation_verified"] = bool(
+                latest_sandbox and latest_sandbox.isolation_verified
+            )
+            output["secure_sandbox_execution_scope"] = (
+                latest_sandbox.execution_scope if latest_sandbox else "NOT_RUN"
+            )
+            output["candidate_mechanism_executed_in_secure_sandbox"] = bool(
+                latest_sandbox and latest_sandbox.candidate_mechanism_executed
+            )
+            output["secure_sandbox_status"] = (
+                "IDENTITY_BOUND_ISOLATION_PASS"
+                if sandbox_gate
+                else "IDENTITY_BOUND_ISOLATION_FAIL"
+                if latest_sandbox
+                and latest_sandbox.identity_bound
+                and latest_sandbox.isolation_verified
+                else "UNVERIFIED_ISOLATION"
+                if latest_sandbox
                 else "NOT_RUN"
             )
             output["derived_execution_state_revalidated"] = True
@@ -293,24 +445,90 @@ class ProjectPosture(BaseModel):
 
         if (
             self.stage is TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED
-            and not latest_authoritative_bound_pass
+            and not restricted_gate
         ):
-            self.stage = TaskmasterStage.STRATIFIED
+            self.stage = (
+                TaskmasterStage.STRATIFIED
+                if self.selected_candidate is not None
+                else TaskmasterStage.STRUCTURED
+                if self.decomposition is not None
+                else TaskmasterStage.RECEIVED
+            )
             self.checkpoints.append(
                 CheckpointRecord(
-                    stage=TaskmasterStage.STRATIFIED,
-                    title="Persisted execution accreditation invalidated",
+                    stage=self.stage,
+                    title="Persisted restricted execution invalidated",
                     evidence_summary=(
-                        "Execution-derived stage was downgraded on load because "
-                        "no current-semantics bound pass matches the persisted "
-                        "selected candidate."
+                        "Restricted-execution stage was downgraded on load because "
+                        "the latest current-semantics result is not a bound pass."
+                    ),
+                    actor="system:migration_guard",
+                )
+            )
+
+        if (
+            self.stage is TaskmasterStage.SECURE_SANDBOX_VERIFIED
+            and not sandbox_gate
+        ):
+            self.stage = (
+                TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED
+                if restricted_gate
+                else TaskmasterStage.STRATIFIED
+                if self.selected_candidate is not None
+                else TaskmasterStage.STRUCTURED
+                if self.decomposition is not None
+                else TaskmasterStage.RECEIVED
+            )
+            self.checkpoints.append(
+                CheckpointRecord(
+                    stage=self.stage,
+                    title="Persisted secure sandbox accreditation invalidated",
+                    evidence_summary=(
+                        "Secure-sandbox stage was downgraded on load because "
+                        "no identity-bound isolation smoke pass matches the selected candidate."
+                    ),
+                    actor="system:migration_guard",
+                )
+            )
+
+        if self.stage is TaskmasterStage.COMPLETED and not (
+            verification_gate and restricted_gate and sandbox_gate
+        ):
+            if sandbox_gate:
+                repaired_stage = TaskmasterStage.SECURE_SANDBOX_VERIFIED
+            elif restricted_gate:
+                repaired_stage = TaskmasterStage.RESTRICTED_EXECUTION_VERIFIED
+            elif self.selected_candidate is not None:
+                repaired_stage = TaskmasterStage.STRATIFIED
+            elif self.decomposition is not None:
+                repaired_stage = TaskmasterStage.STRUCTURED
+            else:
+                repaired_stage = TaskmasterStage.RECEIVED
+            self.stage = repaired_stage
+            if self.final_output is not None:
+                output = dict(self.final_output)
+                output["workflow_status"] = "BLOCKED"
+                output["completion_status"] = "BLOCKED"
+                output["derived_completion_state_revalidated"] = True
+                self.final_output = output
+            self.checkpoints.append(
+                CheckpointRecord(
+                    stage=repaired_stage,
+                    title="Persisted completion invalidated",
+                    evidence_summary=(
+                        "COMPLETED was downgraded on load because verification, "
+                        "restricted-execution, and secure-sandbox gates do not all pass."
                     ),
                     actor="system:migration_guard",
                 )
             )
         return self
 
-    project_id: str
+    project_id: str = Field(
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$",
+    )
     objective: str
     stage: TaskmasterStage
     created_at: float
@@ -320,6 +538,7 @@ class ProjectPosture(BaseModel):
     selected_candidate: StrategyCandidate | None = None
     verification: VerificationReport | None = None
     restricted_execution_results: list[RestrictedExecutionResult] = Field(default_factory=list)
+    secure_sandbox_results: list[SecureSandboxResult] = Field(default_factory=list)
     checkpoints: list[CheckpointRecord] = Field(default_factory=list)
     final_output: dict[str, Any] | None = None
     error_message: str | None = None
