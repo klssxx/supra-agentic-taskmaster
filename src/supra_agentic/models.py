@@ -634,6 +634,9 @@ class ProjectPosture(BaseModel):
             "regla_decision",
             "condicion_fracaso",
         )
-        if not all(isinstance(receipt.get(field), str) and receipt[field].strip() for field in required):
+        if not all(
+            isinstance(receipt.get(field), str) and receipt[field].strip()
+            for field in required
+        ):
             raise ValueError("CRIBA dossier receipt is incomplete")
         return receipt
