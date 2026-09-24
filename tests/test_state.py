@@ -3,6 +3,7 @@
 import tempfile
 
 import pytest
+from pydantic import ValidationError
 
 from supra_agentic.models import (
     ProjectPosture,
@@ -772,3 +773,54 @@ def test_verification_for_nonselected_candidate_is_rejected_without_mutating_com
         assert unchanged.verification is not None
         assert unchanged.verification.candidate_id == selected.candidate_id
 
+
+
+
+@pytest.mark.parametrize("value", ["true", "false", 1, 0])
+def test_restricted_execution_rejects_coercible_passed_flags(value) -> None:
+    with pytest.raises(ValidationError):
+        RestrictedExecutionResult(
+            candidate_id="cand-strict",
+            mechanism_version="sha256:" + "1" * 64,
+            claim_id="claim-strict",
+            protocol_version="sha256:" + "2" * 64,
+            execution_semantics_version=RESTRICTED_EXECUTION_SEMANTICS_VERSION,
+            action_type="RESTRICTED_CODE_RUN",
+            passed=value,  # type: ignore[arg-type]
+            output_log="strict bool sentinel",
+            duration_ms=1.0,
+        )
+
+
+@pytest.mark.parametrize("field", [
+    "passed",
+    "timed_out",
+    "network_isolated",
+    "read_only_root",
+    "capabilities_dropped",
+    "no_new_privileges",
+    "non_root_user",
+    "resource_limits_applied",
+])
+def test_secure_sandbox_rejects_parseable_boolean_coercions(field: str) -> None:
+    payload = {
+        "candidate_id": "cand-strict",
+        "mechanism_version": "sha256:" + "1" * 64,
+        "claim_id": "claim-strict",
+        "protocol_version": "sha256:" + "2" * 64,
+        "image": "python:test",
+        "image_id": "sha256:" + "3" * 64,
+        "passed": False,
+        "observed_result": "FAIL",
+        "duration_ms": 1.0,
+        "timed_out": False,
+        "network_isolated": False,
+        "read_only_root": False,
+        "capabilities_dropped": False,
+        "no_new_privileges": False,
+        "non_root_user": False,
+        "resource_limits_applied": False,
+    }
+    payload[field] = "true"
+    with pytest.raises(ValidationError):
+        SecureSandboxResult.model_validate(payload)
