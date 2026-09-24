@@ -21,6 +21,10 @@ from supra_agentic.models import (
 from supra_agentic.state import CompletionGateError, ProjectStateManager
 
 
+TEST_PROTOCOL_V1 = "sha256:" + "4" * 64
+TEST_PROTOCOL_V2 = "sha256:" + "5" * 64
+
+
 def _secure_result(
     identity: dict[str, str],
     *,
@@ -132,7 +136,7 @@ def test_project_lifecycle_transitions():
             candidate_id=expected_identity["candidate_id"],
             mechanism_version=expected_identity["mechanism_version"],
             claim_id=expected_identity["claim_id"],
-            protocol_version="sha256:test-protocol",
+            protocol_version=TEST_PROTOCOL_V1,
             execution_semantics_version=RESTRICTED_EXECUTION_SEMANTICS_VERSION,
             action_type="RESTRICTED_CODE_RUN",
             passed=True,
@@ -192,7 +196,7 @@ def test_latest_restricted_revision_replaces_prior_pass():
             candidate_id=identity["candidate_id"],
             mechanism_version=identity["mechanism_version"],
             claim_id=identity["claim_id"],
-            protocol_version="sha256:test-protocol",
+            protocol_version=TEST_PROTOCOL_V1,
             execution_semantics_version=RESTRICTED_EXECUTION_SEMANTICS_VERSION,
             action_type="RESTRICTED_CODE_RUN",
             passed=True,
@@ -207,7 +211,7 @@ def test_latest_restricted_revision_replaces_prior_pass():
             candidate_id=identity["candidate_id"],
             mechanism_version=identity["mechanism_version"],
             claim_id=identity["claim_id"],
-            protocol_version="sha256:test-protocol",
+            protocol_version=TEST_PROTOCOL_V1,
             execution_semantics_version=RESTRICTED_EXECUTION_SEMANTICS_VERSION,
             action_type="RESTRICTED_CODE_RUN",
             passed=False,
@@ -241,7 +245,7 @@ def test_completed_workflow_is_revoked_immediately_by_latest_restricted_failure(
                 candidate_id=identity["candidate_id"],
                 mechanism_version=identity["mechanism_version"],
                 claim_id=identity["claim_id"],
-                protocol_version="sha256:test-protocol",
+                protocol_version=TEST_PROTOCOL_V1,
                 execution_semantics_version=RESTRICTED_EXECUTION_SEMANTICS_VERSION,
                 action_type="RESTRICTED_CODE_RUN",
                 passed=passed,
@@ -313,7 +317,7 @@ def test_completion_gate_rejects_failed_or_missing_verification(verdict: str) ->
                 candidate_id=identity["candidate_id"],
                 mechanism_version=identity["mechanism_version"],
                 claim_id=identity["claim_id"],
-                protocol_version="sha256:test-protocol",
+                protocol_version=TEST_PROTOCOL_V1,
                 execution_semantics_version=RESTRICTED_EXECUTION_SEMANTICS_VERSION,
                 action_type="RESTRICTED_CODE_RUN",
                 passed=True,
@@ -404,7 +408,7 @@ def test_completion_gate_requires_current_isolated_sandbox_pass() -> None:
                 candidate_id=identity["candidate_id"],
                 mechanism_version=identity["mechanism_version"],
                 claim_id=identity["claim_id"],
-                protocol_version="sha256:test-protocol",
+                protocol_version=TEST_PROTOCOL_V1,
                 execution_semantics_version=RESTRICTED_EXECUTION_SEMANTICS_VERSION,
                 action_type="RESTRICTED_CODE_RUN",
                 passed=True,
@@ -459,7 +463,7 @@ def test_non_isolated_sandbox_receipt_cannot_satisfy_completion_gate() -> None:
                 candidate_id=identity["candidate_id"],
                 mechanism_version=identity["mechanism_version"],
                 claim_id=identity["claim_id"],
-                protocol_version="sha256:test",
+                protocol_version=TEST_PROTOCOL_V1,
                 execution_semantics_version=RESTRICTED_EXECUTION_SEMANTICS_VERSION,
                 action_type="RESTRICTED_CODE_RUN",
                 passed=True,
@@ -508,7 +512,7 @@ def test_candidate_mechanism_revision_cannot_reuse_prior_completion_evidence() -
                 candidate_id=original_identity["candidate_id"],
                 mechanism_version=original_identity["mechanism_version"],
                 claim_id=original_identity["claim_id"],
-                protocol_version="sha256:test-protocol",
+                protocol_version=TEST_PROTOCOL_V1,
                 execution_semantics_version=RESTRICTED_EXECUTION_SEMANTICS_VERSION,
                 action_type="RESTRICTED_CODE_RUN",
                 passed=True,
@@ -562,7 +566,7 @@ def test_candidate_mechanism_revision_cannot_reuse_prior_completion_evidence() -
                 candidate_id=revised_identity["candidate_id"],
                 mechanism_version=revised_identity["mechanism_version"],
                 claim_id=revised_identity["claim_id"],
-                protocol_version="sha256:test-protocol-2",
+                protocol_version=TEST_PROTOCOL_V2,
                 execution_semantics_version=RESTRICTED_EXECUTION_SEMANTICS_VERSION,
                 action_type="RESTRICTED_CODE_RUN",
                 passed=True,
@@ -655,7 +659,7 @@ def test_completed_project_is_immediately_downgraded_when_current_verification_r
                 candidate_id=identity["candidate_id"],
                 mechanism_version=identity["mechanism_version"],
                 claim_id=identity["claim_id"],
-                protocol_version="sha256:current-verification",
+                protocol_version=TEST_PROTOCOL_V1,
                 execution_semantics_version=RESTRICTED_EXECUTION_SEMANTICS_VERSION,
                 action_type="RESTRICTED_CODE_RUN",
                 passed=True,
@@ -738,7 +742,7 @@ def test_verification_for_nonselected_candidate_is_rejected_without_mutating_com
                 candidate_id=identity["candidate_id"],
                 mechanism_version=identity["mechanism_version"],
                 claim_id=identity["claim_id"],
-                protocol_version="sha256:selected-verification",
+                protocol_version=TEST_PROTOCOL_V1,
                 execution_semantics_version=RESTRICTED_EXECUTION_SEMANTICS_VERSION,
                 action_type="RESTRICTED_CODE_RUN",
                 passed=True,
@@ -824,3 +828,53 @@ def test_secure_sandbox_rejects_parseable_boolean_coercions(field: str) -> None:
     payload[field] = "true"
     with pytest.raises(ValidationError):
         SecureSandboxResult.model_validate(payload)
+
+
+
+@pytest.mark.parametrize(
+    "bad_ref",
+    [
+        "sha256:x",
+        "sha256:" + "g" * 64,
+        "sha256:" + "a" * 63,
+        "sha256:" + "a" * 65,
+        "SHA256:" + "a" * 64,
+    ],
+)
+def test_noncanonical_protocol_reference_cannot_be_identity_bound(bad_ref: str) -> None:
+    result = RestrictedExecutionResult(
+        candidate_id="cand-strict-hash",
+        mechanism_version="sha256:" + "1" * 64,
+        claim_id="claim-strict-hash",
+        protocol_version=bad_ref,
+        execution_semantics_version=RESTRICTED_EXECUTION_SEMANTICS_VERSION,
+        action_type="RESTRICTED_CODE_RUN",
+        passed=True,
+        output_log="hash sentinel",
+        duration_ms=1.0,
+    )
+    assert result.identity_bound is False
+
+
+@pytest.mark.parametrize("field", ["protocol_version", "image_id"])
+def test_noncanonical_secure_hash_reference_cannot_be_identity_bound(field: str) -> None:
+    payload = {
+        "candidate_id": "cand-strict-hash",
+        "mechanism_version": "sha256:" + "1" * 64,
+        "claim_id": "claim-strict-hash",
+        "protocol_version": "sha256:" + "2" * 64,
+        "image": "python:test",
+        "image_id": "sha256:" + "3" * 64,
+        "passed": True,
+        "observed_result": "PASS",
+        "duration_ms": 1.0,
+        "network_isolated": True,
+        "read_only_root": True,
+        "capabilities_dropped": True,
+        "no_new_privileges": True,
+        "non_root_user": True,
+        "resource_limits_applied": True,
+    }
+    payload[field] = "sha256:x"
+    result = SecureSandboxResult.model_validate(payload)
+    assert result.identity_bound is False
